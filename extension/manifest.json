@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "JobFit Copilot",
+  "version": "1.0.0",
+  "description": "Tailor your resume in seconds right from LinkedIn and Indeed.",
+  "action": {
+    "default_popup": "index.html"
+  },
+  "background": {
+    "service_worker": "src/background/index.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.linkedin.com/jobs/*", "*://linkedin.com/jobs/*"],
+      "js": ["src/content/linkedin.ts"]
+    },
+    {
+      "matches": ["*://*.indeed.com/viewjob*", "*://indeed.com/viewjob*"],
+      "js": ["src/content/indeed.ts"]
+    }
+  ],
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["*://*.linkedin.com/*", "*://*.indeed.com/*", "http://localhost:8000/*"]
+}

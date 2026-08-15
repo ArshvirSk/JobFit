@@ -1,0 +1,251 @@
+/* ==========================================
+   JobFit Marketing Landing Page Styles
+   Inspired by unitedcarriers.com
+   ========================================== */
+
+/* Smooth scroll for anchor links */
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+  display: none;
+}
+
+/* ---- Marquee / Ticker ---- */
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-marquee {
+  animation: marquee 30s linear infinite;
+}
+
+/* ---- Fade-in on scroll ---- */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.fade-section {
+  opacity: 0;
+  transform: translateY(40px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fade-section.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---- Particle canvas ---- */
+.hero-canvas {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 55%;
+  height: 100%;
+  z-index: 0;
+}
+
+/* ---- Pill button base ---- */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-pill-primary {
+  background: #fff;
+  color: #0a0a0a;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+}
+.btn-pill-primary:hover {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.3);
+}
+.btn-pill-outline {
+  background: transparent;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.btn-pill-outline:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.05);
+}
+.btn-pill-dark {
+  background: #0a0a0a;
+  color: #fff;
+  border: 1px solid #0a0a0a;
+}
+.btn-pill-dark:hover {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.3);
+}
+.btn-pill-outline-dark {
+  background: transparent;
+  color: #0a0a0a;
+  border: 1px solid rgba(10, 10, 10, 0.2);
+}
+.btn-pill-outline-dark:hover {
+  border-color: rgba(10, 10, 10, 0.5);
+  background: rgba(10, 10, 10, 0.03);
+}
+
+/* ---- Monospace labels ---- */
+.label-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---- Section backgrounds ---- */
+.section-dark {
+  background-color: #0a0a0a;
+  color: #fafafa;
+}
+.section-light {
+  background-color: #fafafa;
+  color: #0a0a0a;
+}
+
+/* ---- Sticky nav ---- */
+.nav-landing {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.4s ease;
+}
+.nav-landing.nav-hidden {
+  transform: translateY(-100%);
+}
+.nav-landing.nav-scrolled {
+  background-color: rgba(10, 10, 10, 0.85);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* ---- Feature card hover glow ---- */
+.feature-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 2.5rem;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(255, 255, 255, 0.02);
+}
+.feature-card:hover {
+  border-color: rgba(59, 130, 246, 0.3);
+  background: rgba(59, 130, 246, 0.04);
+  box-shadow: 0 0 40px rgba(59, 130, 246, 0.08);
+  transform: translateY(-4px);
+}
+
+/* ---- Pricing card ---- */
+.pricing-card {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 3rem;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(255, 255, 255, 0.03);
+}
+.pricing-card.highlighted {
+  border-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.06);
+  box-shadow: 0 0 60px rgba(59, 130, 246, 0.12);
+}
+
+/* ---- FAQ accordion ---- */
+.faq-item {
+  border-bottom: 1px solid rgba(10, 10, 10, 0.08);
+  overflow: hidden;
+}
+.faq-answer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  padding-bottom: 0;
+}
+.faq-answer.open {
+  max-height: 300px;
+  padding-bottom: 2rem;
+}
+.faq-icon {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.faq-icon.open {
+  transform: rotate(45deg);
+}
+
+/* ---- Demo slider ---- */
+.demo-slider-track {
+  position: relative;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid rgba(10, 10, 10, 0.08);
+}
+
+/* ---- Testimonial ---- */
+.testimonial-quote {
+  font-size: clamp(1.25rem, 2vw, 1.75rem);
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+/* ---- Footer watermark ---- */
+.footer-watermark {
+  font-size: clamp(4rem, 12vw, 10rem);
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  opacity: 0.04;
+  white-space: nowrap;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ---- Counter animation ---- */
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 768px) {
+  .hero-canvas {
+    width: 100%;
+    height: 40%;
+    top: auto;
+    bottom: 0;
+    opacity: 0.4;
+  }
+  .feature-card {
+    padding: 1.5rem;
+  }
+  .pricing-card {
+    padding: 2rem;
+  }
+}
