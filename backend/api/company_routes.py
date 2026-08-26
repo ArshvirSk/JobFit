@@ -13,7 +13,10 @@ from backend.chat.connectors.nodes import (
     BenefitsConnector,
     CompetitorsConnector,
     JobsConnector,
-    DSAQuestionsConnector
+    DSAQuestionsConnector,
+    OrgInfoConnector,
+    InterviewProcessConnector,
+    ExtendedLinksConnector
 )
 
 logger = logging.getLogger(__name__)
@@ -45,6 +48,9 @@ async def stream_company_profile(slug: str, user_id: str = Depends(get_current_u
             ("competitors", CompetitorsConnector().fetch(entity_name)),
             ("jobs", JobsConnector().fetch(entity_name)),
             ("dsa", DSAQuestionsConnector().fetch(entity_name)),
+            ("org_info", OrgInfoConnector().fetch(entity_name)),
+            ("interview_process", InterviewProcessConnector().fetch(entity_name)),
+            ("extended_links", ExtendedLinksConnector().fetch(entity_name)),
         ]
         
         tasks = [asyncio.create_task(fetch_category(cat, coro)) for cat, coro in connectors]
