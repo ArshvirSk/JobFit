@@ -11,6 +11,14 @@ import { Badge } from "@/components/ui/badge";
 import { ChatProvider, useChat } from "@/components/chat/chat-context";
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const navigation = [
   { name: "Tailor Resume", href: "/tailor", icon: FileText },
@@ -46,6 +54,7 @@ function DashboardInner({
 
   // Chat state from context
   const { threads, deleteThread } = useChat();
+  const [chatToDelete, setChatToDelete] = useState<string | null>(null);
   // Sync JWT token to the API client whenever session changes
   useEffect(() => {
     setAuthToken(session?.access_token ?? null);
@@ -163,12 +172,7 @@ function DashboardInner({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (window.confirm("Are you sure you want to delete this chat?")) {
-                        deleteThread(thread.id);
-                        if (isThreadActive) {
-                          router.push("/chat");
-                        }
-                      }
+                      setChatToDelete(thread.id);
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:text-red-500 transition-opacity"
                   >
@@ -247,6 +251,31 @@ function DashboardInner({
           {children}
         </main>
       </div>
+
+      {/* Delete Chat Modal */}
+      <Dialog open={!!chatToDelete} onOpenChange={(open) => !open && setChatToDelete(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Chat</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this chat? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setChatToDelete(null)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => {
+              if (chatToDelete) {
+                deleteThread(chatToDelete);
+                const isThreadActive = pathname === `/chat/${chatToDelete}`;
+                if (isThreadActive) {
+                  router.push("/chat");
+                }
+                setChatToDelete(null);
+              }
+            }}>Delete</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
