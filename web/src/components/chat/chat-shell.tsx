@@ -48,6 +48,36 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
   const [activeCompanySlugs, setActiveCompanySlugs] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
 
+  // Resize state
+  const [chatWidth, setChatWidth] = useState(40);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const newWidth = (e.clientX / window.innerWidth) * 100;
+      setChatWidth(Math.min(Math.max(newWidth, 20), 80));
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isDragging]);
+
   useEffect(() => {
     const fetchNotifs = async () => {
       try {
@@ -390,12 +420,12 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
   );
 
   return (
-    <div className="flex h-full w-full bg-background overflow-hidden">
-      {/* Main chat area */}
-      <div className={cn(
-        "flex flex-col min-w-0 transition-all duration-300 relative",
-        activeCompanySlugs.length > 0 ? "w-full md:w-1/2 lg:w-5/12 border-r border-border" : "w-full flex-1"
-      )}>
+    <div className="flex h-full w-full relative">
+      {/* Main Chat Area */}
+      <div 
+        className={cn("flex flex-col h-full bg-background transition-none", activeCompanySlugs.length > 0 ? "hidden md:flex shadow-sm z-20" : "w-full")}
+        style={activeCompanySlugs.length > 0 ? { width: `${chatWidth}%` } : undefined}
+      >
         {notifications.length > 0 && (
           <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg shadow-lg p-3 flex items-start gap-3 animate-in slide-in-from-top-4">
             <Bell className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
@@ -459,6 +489,17 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
           </>
         )}
       </div>
+
+      {/* Resizer Handle */}
+      {activeCompanySlugs.length > 0 && (
+        <div 
+          className={cn(
+            "hidden md:flex w-1.5 cursor-col-resize z-30 transition-colors shrink-0",
+            isDragging ? "bg-emerald-500" : "bg-border hover:bg-emerald-400"
+          )}
+          onMouseDown={handleMouseDown}
+        />
+      )}
 
       {/* Side Panels */}
       {activeCompanySlugs.length > 0 && (
