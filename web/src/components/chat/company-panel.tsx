@@ -19,6 +19,7 @@ interface CompanyPanelProps {
 }
 
 export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: CompanyPanelProps) {
+  const router = useRouter();
   const companyName = slug ? slug.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "Company";
 
   const [data, setData] = useState<any>({
@@ -38,6 +39,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [digest, setDigest] = useState<string | null>(null);
+  const [digestHasData, setDigestHasData] = useState<boolean>(true);
   const [digestLoading, setDigestLoading] = useState(true);
   const [priorApps, setPriorApps] = useState<any[]>([]);
   const [isWatched, setIsWatched] = useState(false);
@@ -140,6 +142,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         if (res.ok) {
           const json = await res.json();
           setDigest(json.digest || null);
+          setDigestHasData(json.has_data ?? true);
         }
       } catch (e) {
         console.error("Failed to fetch digest", e);
@@ -265,9 +268,23 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                   <Skeleton className="h-3 w-4/5" />
                 </div>
               ) : digest ? (
-                <p className="text-sm text-foreground leading-relaxed">{digest}</p>
+                <div>
+                  <p className="text-sm text-foreground leading-relaxed">{digest}</p>
+                  {!digestHasData && (
+                    <div className="mt-3">
+                      <Button variant="outline" size="sm" onClick={() => router.push('/resumes')} className="text-xs bg-emerald-100/50 hover:bg-emerald-200/50 dark:bg-emerald-900/30 dark:hover:bg-emerald-800/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300">
+                        Upload Resume
+                      </Button>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <p className="text-sm text-muted-foreground italic">Upload a resume to see your personalized fit summary.</p>
+                <div>
+                  <p className="text-sm text-muted-foreground italic mb-3">Upload a resume to see your personalized fit summary.</p>
+                  <Button variant="outline" size="sm" onClick={() => router.push('/resumes')} className="text-xs bg-emerald-100/50 hover:bg-emerald-200/50 dark:bg-emerald-900/30 dark:hover:bg-emerald-800/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300">
+                    Upload Resume
+                  </Button>
+                </div>
               )}
             </div>
           </div>
