@@ -53,6 +53,7 @@ class PipelineInput(BaseModel):
     jd_url: Optional[str] = None
     resume_text: Optional[str] = None
     base_resume_id: Optional[str] = None
+    missing_requirements: Optional[List[str]] = None
 
 class PipelineOutput(BaseModel):
     tailored_resume: ParsedResume

@@ -14,6 +14,7 @@ import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "sonner";
 
 interface Application {
   id: string;
@@ -26,6 +27,14 @@ interface Application {
 }
 
 const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected"];
+
+/** Escape a CSV cell value: wrap in quotes if it contains commas, quotes, or newlines */
+function csvCell(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return '"' + value.replace(/"/g, '""') + '"';
+  }
+  return value;
+}
 
 export default function TrackerPage() {
   const { user } = useAuth();
@@ -68,9 +77,11 @@ export default function TrackerPage() {
       setNewRole("");
       setNewStatus("Applied");
       setIsAdding(false);
+      toast.success(`Added ${newCompany} — ${newRole}`);
       await fetchApps();
     } catch (error) {
       console.error("Failed to save application:", error);
+      toast.error("Failed to save application.");
     }
   };
 
@@ -79,8 +90,10 @@ export default function TrackerPage() {
     setApps(apps.map(a => a.id === appId ? { ...a, status } : a));
     try {
       await api.updateApplicationStatus(appId, status);
+      toast.success(`Status updated to ${status}`);
     } catch (error) {
       console.error("Failed to update status:", error);
+      toast.error("Failed to update status.");
       fetchApps(); // Revert on failure
     }
   };
@@ -111,29 +124,36 @@ export default function TrackerPage() {
         status: editStatus,
         notes: editNotes,
       });
+      toast.success("Application updated.");
       setSelectedApp(null);
       fetchApps();
     } catch (error) {
       console.error("Failed to update application:", error);
+      toast.error("Failed to update application.");
     }
   };
 
   const handleDelete = async () => {
     if (!selectedApp) return;
-    if (!confirm("Are you sure you want to delete this application?")) return;
     try {
       await api.deleteApplication(selectedApp.id);
+      toast.success(`Deleted ${selectedApp.company} — ${selectedApp.role}`);
       setSelectedApp(null);
       fetchApps();
     } catch (error) {
       console.error("Failed to delete application:", error);
+      toast.error("Failed to delete application.");
     }
   };
 
   const exportCSV = () => {
     const headers = ["Company", "Role", "Status", "Date Applied", "Notes"];
     const rows = apps.map(a => [
-      a.company, a.role, a.status, new Date(a.applied_at).toLocaleDateString(), a.notes || ""
+      csvCell(a.company),
+      csvCell(a.role),
+      csvCell(a.status),
+      csvCell(new Date(a.applied_at).toLocaleDateString()),
+      csvCell(a.notes || "")
     ]);
     const csvContent = "data:text/csv;charset=utf-8," 
       + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
@@ -144,12 +164,13 @@ export default function TrackerPage() {
     document.body.appendChild(link);
     link.click();
     link.remove();
+    toast.success(`Exported ${apps.length} applications to CSV.`);
   };
 
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-zinc-400" />
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
       </div>
     );
   }
@@ -163,7 +184,7 @@ export default function TrackerPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Application Tracker</h1>
-          <p className="text-zinc-500 mt-2">
+          <p className="text-muted-foreground mt-2">
             Track your job applications and monitor your progress.
           </p>
         </div>
@@ -182,8 +203,8 @@ export default function TrackerPage() {
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-500">Total Applications</CardTitle>
-            <Briefcase className="h-4 w-4 text-zinc-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Applications</CardTitle>
+            <Briefcase className="h-4 w-4 text-muted-foreground/50" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{apps.length}</div>
@@ -191,8 +212,8 @@ export default function TrackerPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-zinc-500">Response Rate</CardTitle>
-            <Briefcase className="h-4 w-4 text-zinc-400" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Response Rate</CardTitle>
+            <Briefcase className="h-4 w-4 text-muted-foreground/50" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{responseRate}%</div>
@@ -201,7 +222,7 @@ export default function TrackerPage() {
       </div>
 
       {isAdding && (
-        <Card className="border-blue-200 shadow-sm">
+        <Card className="border-blue-200 dark:border-blue-800 shadow-sm">
           <CardContent className="pt-6">
             <div className="grid grid-cols-4 gap-4 items-end">
               <div className="space-y-2">
@@ -247,9 +268,9 @@ export default function TrackerPage() {
                     <div 
                       ref={provided.innerRef} 
                       {...provided.droppableProps}
-                      className="bg-zinc-100 p-4 rounded-lg min-h-[500px] flex flex-col gap-3"
+                      className="bg-muted p-4 rounded-lg min-h-[500px] flex flex-col gap-3"
                     >
-                      <h3 className="font-semibold text-zinc-700 mb-2">
+                      <h3 className="font-semibold text-foreground mb-2">
                         {status} ({apps.filter(a => a.status === status).length})
                       </h3>
                       {apps.filter(a => a.status === status).map((app, index) => (
@@ -271,10 +292,10 @@ export default function TrackerPage() {
                                     </Avatar>
                                     <div className="font-medium truncate max-w-[120px]">{app.company}</div>
                                   </div>
-                                  <GripVertical className="h-4 w-4 text-zinc-300" />
+                                  <GripVertical className="h-4 w-4 text-muted-foreground/30" />
                                 </div>
-                                <div className="text-xs text-zinc-500 mb-2 truncate">{app.role}</div>
-                                <div className="text-[10px] text-zinc-400">
+                                <div className="text-xs text-muted-foreground mb-2 truncate">{app.role}</div>
+                                <div className="text-[10px] text-muted-foreground/70">
                                   {new Date(app.applied_at).toLocaleDateString()}
                                 </div>
                               </CardContent>
@@ -296,16 +317,16 @@ export default function TrackerPage() {
             <div className="relative w-full overflow-auto">
               <table className="w-full caption-bottom text-sm">
                 <thead className="[&_tr]:border-b">
-                  <tr className="border-b transition-colors hover:bg-zinc-100/50 data-[state=selected]:bg-zinc-100">
-                    <th className="h-12 px-4 text-left align-middle font-medium text-zinc-500">Company</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-zinc-500">Role</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-zinc-500">Date Applied</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-zinc-500">Status</th>
+                  <tr className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
+                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Company</th>
+                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Role</th>
+                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Date Applied</th>
+                    <th className="h-12 px-4 text-left align-middle font-medium text-muted-foreground">Status</th>
                   </tr>
                 </thead>
                 <tbody className="[&_tr:last-child]:border-0">
                   {apps.map(app => (
-                    <tr key={app.id} className="border-b transition-colors hover:bg-zinc-100/50 cursor-pointer" onClick={() => openDetails(app)}>
+                    <tr key={app.id} className="border-b transition-colors hover:bg-muted/50 cursor-pointer" onClick={() => openDetails(app)}>
                       <td className="p-4 align-middle font-medium flex items-center gap-2">
                         <Avatar className="h-6 w-6">
                           <AvatarImage src={`https://logo.clearbit.com/${app.company.replace(/\s+/g, '')}.com`} />
@@ -314,7 +335,7 @@ export default function TrackerPage() {
                         {app.company}
                       </td>
                       <td className="p-4 align-middle">{app.role}</td>
-                      <td className="p-4 align-middle text-zinc-500">{new Date(app.applied_at).toLocaleDateString()}</td>
+                      <td className="p-4 align-middle text-muted-foreground">{new Date(app.applied_at).toLocaleDateString()}</td>
                       <td className="p-4 align-middle">
                         <Select value={app.status} onValueChange={(val) => updateStatus(app.id, val as string)}>
                           <SelectTrigger className="h-8 text-xs w-[130px]" onClick={(e) => e.stopPropagation()}>
@@ -329,7 +350,7 @@ export default function TrackerPage() {
                   ))}
                   {apps.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="p-4 text-center text-zinc-500">No applications tracked yet.</td>
+                      <td colSpan={4} className="p-4 text-center text-muted-foreground">No applications tracked yet.</td>
                     </tr>
                   )}
                 </tbody>
@@ -370,7 +391,7 @@ export default function TrackerPage() {
               </div>
               <div className="space-y-2">
                 <Label>Date Applied</Label>
-                <div className="flex h-10 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm text-zinc-500">
+                <div className="flex h-10 w-full items-center rounded-md border border-input bg-transparent px-3 py-2 text-sm text-muted-foreground">
                   {selectedApp && new Date(selectedApp.applied_at).toLocaleDateString()}
                 </div>
               </div>

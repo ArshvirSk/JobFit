@@ -1,4 +1,5 @@
 import axios from "axios";
+import { createClient } from "@/lib/supabase";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -10,14 +11,28 @@ const apiClient = axios.create({
 });
 
 // ── JWT Interceptor ─────────────────────────────────────
-// Attaches the Supabase access token to every outgoing request.
-// The token is read dynamically from the Supabase client on each request.
-export function setAuthToken(token: string | null) {
-  if (token) {
-    apiClient.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-  } else {
-    delete apiClient.defaults.headers.common["Authorization"];
+// Dynamically attaches the Supabase access token to every outgoing request.
+// This eliminates the race condition where child components fire API calls
+// before the layout's useEffect has synced the token.
+apiClient.interceptors.request.use(async (config) => {
+  try {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      config.headers.Authorization = `Bearer ${session.access_token}`;
+    }
+  } catch {
+    // If we can't get the session, proceed without auth header —
+    // the backend will return 401, and the frontend auth guard will redirect.
   }
+  return config;
+});
+
+// ── Legacy setAuthToken (no-op, kept for backwards compat) ──
+// The interceptor above handles token injection automatically.
+// This function is kept so existing call sites don't break.
+export function setAuthToken(_token: string | null) {
+  // No-op: the request interceptor handles this dynamically now.
 }
 
 // ── Request/Response types ──────────────────────────────
@@ -31,6 +46,7 @@ export interface PipelineInput {
   jd_url?: string;
   resume_text?: string;
   base_resume_id?: string;
+  missing_requirements?: string[];
 }
 
 // ── API methods ─────────────────────────────────────────
@@ -75,8 +91,8 @@ export const api = {
   getApplications: () =>
     apiClient.get("/api/applications"),
 
-  saveApplication: (company: string, role: string, status: string = "Applied", notes: string = "") =>
-    apiClient.post("/api/applications", { company, role, status, notes }),
+  saveApplication: (company: string, role: string, status: string = "Materials Generated", notes: string = "", extra: any = {}) =>
+    apiClient.post("/api/applications", { company, role, status, notes, ...extra }),
 
   updateApplicationStatus: (appId: string, status: string) =>
     apiClient.patch(`/api/applications/${appId}/status`, { status }),
@@ -94,4 +110,20 @@ export const api = {
   // --- Billing ---
   createCheckoutSession: (planTier: string) =>
     apiClient.post("/api/billing/checkout", { plan_tier: planTier }),
+
+  // --- Watch & Notifications ---
+  watchCompany: (slug: string) =>
+    apiClient.post(`/api/company/${slug}/watch`),
+    
+  unwatchCompany: (slug: string) =>
+    apiClient.delete(`/api/company/${slug}/watch`),
+    
+  getWatchStatus: (slug: string) =>
+    apiClient.get(`/api/company/${slug}/watch`),
+    
+  getNotifications: () =>
+    apiClient.get("/api/company/notifications"),
+    
+  markNotificationRead: (notifId: string) =>
+    apiClient.post(`/api/company/notifications/${notifId}/read`),
 };

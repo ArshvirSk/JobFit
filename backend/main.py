@@ -3,6 +3,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.config import settings
 from backend.api.routes import router
+from backend.chat.routes import chat_router
+from backend.api.company_routes import company_router
+
+from contextlib import asynccontextmanager
 
 # Configure logging
 logging.basicConfig(
@@ -12,10 +16,27 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start background tasks
+    from backend.tasks import run_watch_loop
+    import asyncio
+    watch_task = asyncio.create_task(run_watch_loop())
+    
+    yield
+    
+    # Shutdown: Clean up background tasks
+    watch_task.cancel()
+    try:
+        await watch_task
+    except asyncio.CancelledError:
+        pass
+
 app = FastAPI(
     title="JobFit API",
     description="AI Job Application Copilot — Core AI Pipeline API",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # CORS middleware
@@ -30,6 +51,8 @@ app.add_middleware(
 
 # Include routes
 app.include_router(router)
+app.include_router(chat_router)
+app.include_router(company_router)
 
 if __name__ == "__main__":
     import uvicorn

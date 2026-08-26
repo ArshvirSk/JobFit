@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { FileText, Mail, Target, MessageSquare, Cpu, Kanban } from "lucide-react";
+import { ModeToggle } from "@/components/mode-toggle";
 import "./landing.css";
 /* ─────────────────────────────────────────────
    DATA
@@ -383,6 +384,7 @@ export default function LandingPage() {
           </div>
 
           <div className="flex items-center gap-3">
+            <ModeToggle />
             <Link
               href="/login"
               className="label-mono text-white/70 hover:text-white transition-colors duration-300 hidden sm:block"

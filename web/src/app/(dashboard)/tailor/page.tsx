@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,13 +15,15 @@ import { api, PipelineInput } from "@/lib/api";
 import { Loader2, Download, Copy, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { PDFExport } from "@/components/pdf-export";
+import { toast } from "sonner";
 
-export default function TailorPage() {
+function TailorContent() {
   const { user, consumeCredit } = useAuth();
+  const searchParams = useSearchParams();
   const [step, setStep] = useState<"input" | "processing" | "results">("input");
   
   // Input State
-  const [jdUrl, setJdUrl] = useState("");
+  const [jdUrl, setJdUrl] = useState(searchParams?.get("jdUrl") || "");
   const [jdText, setJdText] = useState("");
   const [resumeText, setResumeText] = useState("");
   
@@ -29,10 +32,17 @@ export default function TailorPage() {
   const [selectedResumeId, setSelectedResumeId] = useState<string>("custom");
 
   // Tracker State
+  const companyParam = searchParams?.get("company") || "";
+  const roleParam = searchParams?.get("role") || "";
+  const fitLabelParam = searchParams?.get("fitLabel") || "";
+
   const [isTrackerOpen, setIsTrackerOpen] = useState(false);
-  const [trackCompany, setTrackCompany] = useState("");
-  const [trackRole, setTrackRole] = useState("");
+  const [trackCompany, setTrackCompany] = useState(companyParam);
+  const [trackRole, setTrackRole] = useState(roleParam);
   const [isTracking, setIsTracking] = useState(false);
+  
+  const [appId, setAppId] = useState<string | null>(null);
+  const [isApplied, setIsApplied] = useState(false);
   
   useEffect(() => {
     if (user) {
@@ -79,10 +89,50 @@ export default function TailorPage() {
       if (jdUrl) payload.jd_url = jdUrl;
       if (jdText) payload.jd_text = jdText;
 
+      const gapsParam = searchParams?.get("gaps");
+      if (gapsParam) {
+        try {
+          payload.missing_requirements = JSON.parse(gapsParam);
+        } catch (e) {
+          console.error("Failed to parse gaps", e);
+        }
+      }
+
       const response = await api.tailorResume(payload);
       setResult(response.data);
-      setTrackCompany("");
-      setTrackRole(response.data.tailored_resume?.role || "");
+      
+      const resRole = roleParam || response.data.tailored_resume?.role || "";
+      setTrackCompany(companyParam || "");
+      setTrackRole(resRole);
+
+      // Auto-log to tracker if we know the company
+      if (companyParam) {
+        try {
+          const appRes = await api.saveApplication(
+            companyParam, 
+            resRole,
+            "Materials Generated",
+            "",
+            {
+              job_url: jdUrl,
+              resume_version_used: selectedResumeId,
+              cover_letter_generated: !!response.data.cover_letter,
+              fit_label: fitLabelParam || null
+            }
+          );
+          // Backend returns the inserted row or empty object
+          if (appRes.data && appRes.data.id) {
+            setAppId(appRes.data.id);
+            setIsApplied(false);
+          } else if (appRes.data?.id === undefined && appRes.data) {
+            // Depending on how backend returns the single object vs list
+            setAppId(appRes.data.id || appRes.data); 
+          }
+        } catch (e) {
+          console.error("Failed to auto-log application", e);
+        }
+      }
+
       setStep("results");
     } catch (err: any) {
       if (err.response?.status === 403) {
@@ -97,26 +147,58 @@ export default function TailorPage() {
   const handleCopyCoverLetter = () => {
     if (result?.cover_letter?.text) {
       navigator.clipboard.writeText(result.cover_letter.text);
+      toast.success("Cover letter copied to clipboard!");
     }
   };
 
   const resetFlow = () => {
     setResult(null);
+    setAppId(null);
+    setIsApplied(false);
     setStep("input");
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
+    <div className="w-full max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500">
       
       {/* HEADER */}
       <div className="flex items-center justify-between border-b pb-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Tailor Resume</h1>
-          <p className="text-zinc-500">Match your experience to any job in seconds.</p>
+          <p className="text-muted-foreground">Match your experience to any job in seconds.</p>
         </div>
         {step === "results" && (
           <div className="flex gap-2">
-            <Button variant="default" onClick={() => setIsTrackerOpen(true)}>Save to Tracker</Button>
+            {appId ? (
+              isApplied ? (
+                <Badge variant="default" className="bg-green-100 text-green-800 hover:bg-green-100 h-10 px-4 text-sm flex items-center gap-2">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Applied
+                </Badge>
+              ) : (
+                <Button variant="default" onClick={async () => {
+                  setIsTracking(true);
+                  try {
+                    // if appId is object fallback
+                    const idStr = typeof appId === 'object' ? (appId as any).id : appId;
+                    if (idStr) {
+                      await api.updateApplicationStatus(idStr, "Applied");
+                      setIsApplied(true);
+                      toast.success("Marked as applied!");
+                    }
+                  } catch (e) {
+                    toast.error("Failed to update status.");
+                  } finally {
+                    setIsTracking(false);
+                  }
+                }} disabled={isTracking}>
+                  {isTracking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  Mark as applied?
+                </Button>
+              )
+            ) : (
+              <Button variant="default" onClick={() => setIsTrackerOpen(true)}>Save to Tracker</Button>
+            )}
             <Button variant="outline" onClick={resetFlow}>Start Over</Button>
           </div>
         )}
@@ -144,8 +226,10 @@ export default function TailorPage() {
               try {
                 await api.saveApplication(trackCompany, trackRole, "Applied");
                 setIsTrackerOpen(false);
+                toast.success("Saved to Application Tracker!");
               } catch (e) {
                 console.error(e);
+                toast.error("Failed to save to tracker.");
               } finally {
                 setIsTracking(false);
               }
@@ -184,7 +268,7 @@ export default function TailorPage() {
               </div>
               <div className="relative">
                 <div className="absolute inset-0 flex items-center"><span className="w-full border-t" /></div>
-                <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-zinc-500">Or</span></div>
+                <div className="relative flex justify-center text-xs uppercase"><span className="bg-background px-2 text-muted-foreground">Or</span></div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="jdText">Job Description Text</Label>
@@ -242,12 +326,12 @@ export default function TailorPage() {
             <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
             <div className="space-y-2">
               <h3 className="text-2xl font-semibold">Crafting your application...</h3>
-              <p className="text-zinc-500 max-w-md mx-auto">
+              <p className="text-muted-foreground max-w-md mx-auto">
                 Our AI is currently analyzing the job description, extracting keywords, and rewriting your resume to highlight your most relevant experience.
               </p>
             </div>
             
-            <div className="w-full max-w-md space-y-3 text-sm text-zinc-600 mt-8 text-left">
+            <div className="w-full max-w-md space-y-3 text-sm text-muted-foreground mt-8 text-left">
               <div className="flex items-center gap-3">
                 <CheckCircle2 className="h-4 w-4 text-green-500" />
                 <span>Parsing Job Description</span>
@@ -285,16 +369,16 @@ export default function TailorPage() {
                 {/* Simplified Resume Render for Preview */}
                 <div className="text-center mb-8 border-b pb-6">
                   <h1 className="text-3xl font-bold mb-2">{result.tailored_resume.name}</h1>
-                  <p className="text-sm text-zinc-600">{result.tailored_resume.contact_info}</p>
+                  <p className="text-sm text-muted-foreground">{result.tailored_resume.contact_info}</p>
                 </div>
                 
                 <div className="mb-6">
-                  <h2 className="text-lg font-bold border-b pb-1 mb-3 uppercase tracking-wider text-zinc-800">Professional Summary</h2>
+                  <h2 className="text-lg font-bold border-b pb-1 mb-3 uppercase tracking-wider text-foreground">Professional Summary</h2>
                   <p className="text-sm leading-relaxed">{result.tailored_resume.summary}</p>
                 </div>
                 
                 <div className="mb-6">
-                  <h2 className="text-lg font-bold border-b pb-1 mb-3 uppercase tracking-wider text-zinc-800">Experience</h2>
+                  <h2 className="text-lg font-bold border-b pb-1 mb-3 uppercase tracking-wider text-foreground">Experience</h2>
                   <div className="space-y-6">
                     {result.tailored_resume.experience.map((exp: any, i: number) => (
                       <div key={i}>
@@ -342,13 +426,13 @@ export default function TailorPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-zinc-600">{gap.suggestion_text}</p>
+                    <p className="text-muted-foreground">{gap.suggestion_text}</p>
                   </CardContent>
                 </Card>
               ))}
               
               {result.skill_gaps.length === 0 && (
-                <div className="p-8 text-center text-zinc-500">
+                <div className="p-8 text-center text-muted-foreground">
                   Great news! Your resume covers all the critical skills mentioned in the job description.
                 </div>
               )}
@@ -359,11 +443,11 @@ export default function TailorPage() {
             <div className="space-y-4">
               <h2 className="text-xl font-bold mb-4">Predicted Interview Questions</h2>
               {user?.plan_tier === "free" ? (
-                <div className="p-8 text-center border rounded-md bg-blue-50/50 border-blue-100 flex flex-col items-center gap-4">
+                <div className="p-8 text-center border rounded-md bg-accent/30 border-blue-100 flex flex-col items-center gap-4">
                   <Zap className="h-8 w-8 text-blue-500" />
                   <div>
-                    <h3 className="font-bold text-lg text-blue-900">Upgrade to Pro</h3>
-                    <p className="text-blue-700/80 mt-1 max-w-sm mx-auto">Unlock AI-predicted interview questions tailored specifically to this job description and your resume.</p>
+                    <h3 className="font-bold text-lg text-blue-900 dark:text-blue-300">Upgrade to Pro</h3>
+                    <p className="text-blue-700/80 dark:text-blue-400/80 mt-1 max-w-sm mx-auto">Unlock AI-predicted interview questions tailored specifically to this job description and your resume.</p>
                   </div>
                   <Button onClick={() => window.location.href = '/billing'}>View Plans</Button>
                 </div>
@@ -372,13 +456,13 @@ export default function TailorPage() {
                   {result.interview_questions.map((q: string, i: number) => (
                     <Card key={i} className="shadow-sm">
                       <CardContent className="p-4">
-                        <p className="font-medium text-zinc-800"><span className="text-blue-500 mr-2 font-bold">Q{i+1}.</span>{q}</p>
+                        <p className="font-medium text-foreground"><span className="text-blue-500 mr-2 font-bold">Q{i+1}.</span>{q}</p>
                       </CardContent>
                     </Card>
                   ))}
                 </div>
               ) : (
-                <div className="p-8 text-center text-zinc-500 border rounded-md">
+                <div className="p-8 text-center text-muted-foreground border rounded-md">
                   No interview questions could be predicted for this role.
                 </div>
               )}
@@ -389,27 +473,27 @@ export default function TailorPage() {
             <div className="space-y-4">
               <h2 className="text-xl font-bold mb-4">ATS Compatibility Check</h2>
               {user?.plan_tier === "free" ? (
-                <div className="p-8 text-center border rounded-md bg-blue-50/50 border-blue-100 flex flex-col items-center gap-4">
+                <div className="p-8 text-center border rounded-md bg-accent/30 border-blue-100 flex flex-col items-center gap-4">
                   <Zap className="h-8 w-8 text-blue-500" />
                   <div>
-                    <h3 className="font-bold text-lg text-blue-900">Upgrade to Pro</h3>
-                    <p className="text-blue-700/80 mt-1 max-w-sm mx-auto">Get an automated ATS compatibility check to ensure your resume won't get filtered out by formatting issues.</p>
+                    <h3 className="font-bold text-lg text-blue-900 dark:text-blue-300">Upgrade to Pro</h3>
+                    <p className="text-blue-700/80 dark:text-blue-400/80 mt-1 max-w-sm mx-auto">Get an automated ATS compatibility check to ensure your resume won't get filtered out by formatting issues.</p>
                   </div>
                   <Button onClick={() => window.location.href = '/billing'}>View Plans</Button>
                 </div>
               ) : result.ats_issues && result.ats_issues.length > 0 ? (
                 <div className="grid gap-4">
                   {result.ats_issues.map((issue: string, i: number) => (
-                    <Card key={i} className="shadow-sm border-l-4 border-l-red-500 bg-red-50/50">
+                    <Card key={i} className="shadow-sm border-l-4 border-l-red-500 bg-destructive/10">
                       <CardContent className="p-4 flex gap-3">
                         <AlertCircle className="h-5 w-5 text-red-500 shrink-0 mt-0.5" />
-                        <p className="text-zinc-800 leading-relaxed">{issue}</p>
+                        <p className="text-foreground leading-relaxed">{issue}</p>
                       </CardContent>
                     </Card>
                   ))}
                 </div>
               ) : (
-                <div className="p-8 text-center text-green-600 bg-green-50 border border-green-200 rounded-md flex flex-col items-center gap-2">
+                <div className="p-8 text-center text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 rounded-md flex flex-col items-center gap-2">
                   <CheckCircle2 className="h-8 w-8" />
                   <p className="font-medium">Great! No major ATS compatibility issues detected in your base resume.</p>
                 </div>
@@ -419,5 +503,13 @@ export default function TailorPage() {
         </Tabs>
       )}
     </div>
+  );
+}
+
+export default function TailorPage() {
+  return (
+    <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>}>
+      <TailorContent />
+    </Suspense>
   );
 }

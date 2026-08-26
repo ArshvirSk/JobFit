@@ -15,6 +15,7 @@ class PipelineState(TypedDict):
     raw_jd: str
     raw_resume: Optional[str]
     tone: str
+    missing_requirements: Optional[List[str]]
     
     # Processed Data
     parsed_jd: Optional[ParsedJD]

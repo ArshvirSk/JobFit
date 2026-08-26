@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
+import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,7 @@ export default function LoginPage() {
   // If already authenticated, redirect
   useEffect(() => {
     if (session) {
-      router.replace("/tailor");
+      router.replace("/chat");
     }
   }, [session, router]);
 
@@ -51,7 +52,7 @@ export default function LoginPage() {
         if (result.error) {
           setError(result.error);
         } else {
-          router.push("/tailor");
+          router.push("/chat");
         }
       }
     } finally {
@@ -60,7 +61,10 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4 relative">
+      <div className="absolute top-4 right-4">
+        <ModeToggle />
+      </div>
       <Card className="w-full max-w-md shadow-xl border-zinc-200">
         <CardHeader className="text-center space-y-2">
           <div className="flex items-center justify-center gap-2 text-blue-600 mb-2">
@@ -109,7 +113,7 @@ export default function LoginPage() {
               <span className="w-full border-t" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-zinc-500">Or continue with email</span>
+              <span className="bg-background px-2 text-muted-foreground">Or continue with email</span>
             </div>
           </div>
 
@@ -164,7 +168,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-zinc-500">
+          <p className="text-center text-sm text-muted-foreground">
             {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
             <button
               type="button"

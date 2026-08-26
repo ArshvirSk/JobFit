@@ -14,6 +14,8 @@ Company: {company}
 Responsibilities: {responsibilities}
 Keywords: {keywords}
 
+{missing_requirements_section}
+
 Original Resume:
 {parsed_resume}
 

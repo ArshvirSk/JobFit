@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Trash2, Plus, FileText, Loader2, Upload } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 interface BaseResume {
   id: string;
@@ -30,6 +32,10 @@ export default function ResumesPage() {
   const [isExtracting, setIsExtracting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<BaseResume | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -41,9 +47,10 @@ export default function ResumesPage() {
       if (!newLabel) {
         setNewLabel(file.name.split(".")[0]);
       }
+      toast.success("Text extracted successfully from " + file.name);
     } catch (error) {
       console.error("Failed to extract text:", error);
-      alert("Failed to extract text from file. Please make sure it's a valid PDF or DOCX.");
+      toast.error("Failed to extract text from file. Please make sure it's a valid PDF or DOCX.");
     } finally {
       setIsExtracting(false);
       if (fileInputRef.current) {
@@ -58,6 +65,7 @@ export default function ResumesPage() {
       setResumes(res.data);
     } catch (error) {
       console.error("Failed to fetch resumes:", error);
+      toast.error("Failed to load resumes.");
     } finally {
       setLoading(false);
     }
@@ -77,20 +85,29 @@ export default function ResumesPage() {
       setNewLabel("");
       setNewText("");
       setIsAdding(false);
+      toast.success("Resume saved successfully!");
       await fetchResumes();
     } catch (error) {
       console.error("Failed to save resume:", error);
+      toast.error("Failed to save resume. Please try again.");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDeleteResume = async (id: string) => {
+  const handleDeleteResume = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
     try {
-      await api.deleteResume(id);
+      await api.deleteResume(deleteTarget.id);
+      toast.success(`Deleted "${deleteTarget.label}"`);
+      setDeleteTarget(null);
       await fetchResumes();
     } catch (error) {
       console.error("Failed to delete resume:", error);
+      toast.error("Failed to delete resume.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -193,7 +210,7 @@ export default function ResumesPage() {
                 variant="ghost" 
                 size="icon" 
                 className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                onClick={() => handleDeleteResume(resume.id)}
+                onClick={() => setDeleteTarget(resume)}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -214,6 +231,25 @@ export default function ResumesPage() {
           </div>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Resume</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>"{deleteTarget?.label}"</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={isDeleting}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteResume} disabled={isDeleting}>
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

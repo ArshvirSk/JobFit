@@ -31,10 +31,10 @@ export default function BillingPage() {
   return (
     <div className="max-w-6xl mx-auto py-12 px-4">
       <div className="mb-12 text-center">
-        <h1 className="text-4xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-zinc-900 to-zinc-500">
+        <h1 className="text-4xl font-extrabold tracking-tight mb-4 bg-clip-text text-transparent bg-gradient-to-r from-foreground to-muted-foreground">
           Upgrade your Job Search
         </h1>
-        <p className="text-lg text-zinc-500 max-w-2xl mx-auto">
+        <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
           Get the tools you need to stand out from the crowd. Tailor unlimited resumes, predict interview questions, and land your dream job faster.
         </p>
       </div>
@@ -55,42 +55,42 @@ export default function BillingPage() {
 
       <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
         {/* Free Tier */}
-        <Card className={`flex flex-col transition-all duration-300 hover:shadow-md ${user?.plan_tier === "free" ? "border-zinc-300 ring-2 ring-zinc-100" : "border-zinc-200"}`}>
+        <Card className={`flex flex-col transition-all duration-300 hover:shadow-md ${user?.plan_tier === "free" ? "border-border ring-2 ring-muted" : "border-border"}`}>
           <CardHeader>
-            <CardTitle className="text-zinc-600">Free</CardTitle>
+            <CardTitle className="text-muted-foreground">Free</CardTitle>
             <div className="flex items-baseline mt-4 mb-2">
-              <span className="text-4xl font-extrabold text-zinc-900">$0</span>
-              <span className="text-zinc-500 ml-1 font-medium">/ month</span>
+              <span className="text-4xl font-extrabold text-foreground">$0</span>
+              <span className="text-muted-foreground ml-1 font-medium">/ month</span>
             </div>
             <CardDescription className="text-sm h-10">Perfect for exploring the platform and occasional applications.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 flex-1 mt-4">
             <div className="flex items-start gap-3">
               <Check className="h-5 w-5 text-blue-600 shrink-0" />
-              <span className="text-sm font-medium text-zinc-700">3 tailored resumes / month</span>
+              <span className="text-sm font-medium text-foreground">3 tailored resumes / month</span>
             </div>
             <div className="flex items-start gap-3">
               <Check className="h-5 w-5 text-blue-600 shrink-0" />
-              <span className="text-sm font-medium text-zinc-700">AI cover letters</span>
+              <span className="text-sm font-medium text-foreground">AI cover letters</span>
             </div>
-            <div className="flex items-start gap-3 text-zinc-400 opacity-60">
+            <div className="flex items-start gap-3 text-muted-foreground opacity-60">
               <Shield className="h-5 w-5 shrink-0" />
               <span className="text-sm line-through">Predict interview questions</span>
             </div>
-            <div className="flex items-start gap-3 text-zinc-400 opacity-60">
+            <div className="flex items-start gap-3 text-muted-foreground opacity-60">
               <Shield className="h-5 w-5 shrink-0" />
               <span className="text-sm line-through">ATS compatibility check</span>
             </div>
           </CardContent>
           <CardFooter>
-            <Button variant="outline" className="w-full text-zinc-500 border-zinc-200" disabled>
+            <Button variant="outline" className="w-full text-muted-foreground border-border" disabled>
               {user?.plan_tier === "free" ? "Current Plan" : "Downgrade"}
             </Button>
           </CardFooter>
         </Card>
 
         {/* Pro Monthly Tier */}
-        <Card className={`flex flex-col border-blue-200 relative transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${user?.plan_tier === "pro" ? "ring-2 ring-blue-600 shadow-lg" : "shadow-md bg-white"}`}>
+        <Card className={`flex flex-col border-blue-200 relative transition-all duration-300 hover:shadow-xl hover:-translate-y-1 ${user?.plan_tier === "pro" ? "ring-2 ring-blue-600 shadow-lg" : "shadow-md bg-card"}`}>
           <CardHeader>
             <CardTitle className="text-blue-700 flex justify-between items-center">
               Pro Monthly
@@ -101,35 +101,35 @@ export default function BillingPage() {
               )}
             </CardTitle>
             <div className="flex items-baseline mt-4 mb-2">
-              <span className="text-4xl font-extrabold text-zinc-900">$12</span>
-              <span className="text-zinc-500 ml-1 font-medium">/ month</span>
+              <span className="text-4xl font-extrabold text-foreground">$12</span>
+              <span className="text-muted-foreground ml-1 font-medium">/ month</span>
             </div>
             <CardDescription className="text-sm h-10">For active job seekers who want every advantage.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 flex-1 mt-4">
             <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-0.5 rounded-full shrink-0">
-                <Check className="h-4 w-4 text-blue-700" />
+              <div className="bg-blue-100 dark:bg-blue-900 p-0.5 rounded-full shrink-0">
+                <Check className="h-4 w-4 text-blue-700 dark:text-blue-300" />
               </div>
-              <span className="text-sm font-semibold text-zinc-900">Unlimited tailored resumes</span>
+              <span className="text-sm font-semibold text-foreground">Unlimited tailored resumes</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-0.5 rounded-full shrink-0">
-                <Check className="h-4 w-4 text-blue-700" />
+              <div className="bg-blue-100 dark:bg-blue-900 p-0.5 rounded-full shrink-0">
+                <Check className="h-4 w-4 text-blue-700 dark:text-blue-300" />
               </div>
-              <span className="text-sm font-medium text-zinc-700">AI cover letters</span>
+              <span className="text-sm font-medium text-foreground">AI cover letters</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-0.5 rounded-full shrink-0">
-                <Check className="h-4 w-4 text-blue-700" />
+              <div className="bg-blue-100 dark:bg-blue-900 p-0.5 rounded-full shrink-0">
+                <Check className="h-4 w-4 text-blue-700 dark:text-blue-300" />
               </div>
-              <span className="text-sm font-semibold text-zinc-900">Predict interview questions</span>
+              <span className="text-sm font-semibold text-foreground">Predict interview questions</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="bg-blue-100 p-0.5 rounded-full shrink-0">
-                <Check className="h-4 w-4 text-blue-700" />
+              <div className="bg-blue-100 dark:bg-blue-900 p-0.5 rounded-full shrink-0">
+                <Check className="h-4 w-4 text-blue-700 dark:text-blue-300" />
               </div>
-              <span className="text-sm font-semibold text-zinc-900">ATS compatibility check</span>
+              <span className="text-sm font-semibold text-foreground">ATS compatibility check</span>
             </div>
           </CardContent>
           <CardFooter>
@@ -146,15 +146,15 @@ export default function BillingPage() {
         </Card>
 
         {/* Annual Pro Tier */}
-        <Card className={`flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${user?.plan_tier === "annual_pro" ? "ring-2 ring-emerald-500 shadow-md border-emerald-200" : "border-zinc-200"}`}>
+        <Card className={`flex flex-col transition-all duration-300 hover:shadow-lg hover:-translate-y-1 ${user?.plan_tier === "annual_pro" ? "ring-2 ring-emerald-500 shadow-md border-emerald-200" : "border-border"}`}>
           <CardHeader>
             <CardTitle className="text-emerald-700 flex justify-between items-center">
               Pro Annual
               <TrendingUp className="h-5 w-5 opacity-70" />
             </CardTitle>
             <div className="flex items-baseline mt-4 mb-2">
-              <span className="text-4xl font-extrabold text-zinc-900">$89</span>
-              <span className="text-zinc-500 ml-1 font-medium">/ year</span>
+              <span className="text-4xl font-extrabold text-foreground">$89</span>
+              <span className="text-muted-foreground ml-1 font-medium">/ year</span>
             </div>
             <CardDescription className="text-sm h-10">
               <span className="inline-block bg-emerald-100 text-emerald-800 text-xs font-bold px-2 py-1 rounded mb-1">
@@ -166,21 +166,21 @@ export default function BillingPage() {
           </CardHeader>
           <CardContent className="space-y-4 flex-1 mt-4">
             <div className="flex items-start gap-3">
-              <div className="bg-emerald-100 p-0.5 rounded-full shrink-0">
-                <Check className="h-4 w-4 text-emerald-700" />
+              <div className="bg-emerald-100 dark:bg-emerald-900 p-0.5 rounded-full shrink-0">
+                <Check className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
               </div>
-              <span className="text-sm font-semibold text-zinc-900">All Pro features included</span>
+              <span className="text-sm font-semibold text-foreground">All Pro features included</span>
             </div>
             <div className="flex items-start gap-3">
-              <div className="bg-emerald-100 p-0.5 rounded-full shrink-0">
-                <Check className="h-4 w-4 text-emerald-700" />
+              <div className="bg-emerald-100 dark:bg-emerald-900 p-0.5 rounded-full shrink-0">
+                <Check className="h-4 w-4 text-emerald-700 dark:text-emerald-300" />
               </div>
-              <span className="text-sm font-medium text-zinc-700">One-time payment</span>
+              <span className="text-sm font-medium text-foreground">One-time payment</span>
             </div>
           </CardContent>
           <CardFooter>
             <Button 
-              className={`w-full font-semibold transition-all ${user?.plan_tier !== "annual_pro" ? "bg-zinc-900 hover:bg-zinc-800 text-white" : ""}`}
+              className={`w-full font-semibold transition-all ${user?.plan_tier !== "annual_pro" ? "bg-primary hover:bg-primary/90 text-primary-foreground" : ""}`}
               variant={user?.plan_tier === "annual_pro" ? "outline" : "default"}
               disabled={user?.plan_tier === "annual_pro" || loadingTier !== null}
               onClick={() => handleSubscribe("annual_pro")}

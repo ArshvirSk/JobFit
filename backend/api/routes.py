@@ -42,8 +42,10 @@ async def get_current_user_id(authorization: str = Header(None)) -> str:
         if not res or not res.user:
             raise HTTPException(status_code=401, detail="Invalid token")
         return res.user.id
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Auth Error: {e}")
+        logger.debug(f"Auth token validation failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
 
@@ -62,8 +64,12 @@ class SaveResumeRequest(BaseModel):
 class SaveApplicationRequest(BaseModel):
     company: str
     role: str
-    status: str = "Applied"
+    status: str = "Materials Generated"
     notes: str = ""
+    job_url: Optional[str] = None
+    resume_version_used: Optional[str] = None
+    cover_letter_generated: Optional[bool] = False
+    fit_label: Optional[str] = None
 
 class UpdateApplicationStatusRequest(BaseModel):
     status: str
@@ -73,6 +79,10 @@ class UpdateApplicationRequest(BaseModel):
     role: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    job_url: Optional[str] = None
+    resume_version_used: Optional[str] = None
+    cover_letter_generated: Optional[bool] = None
+    fit_label: Optional[str] = None
 
 
 # ── Health ───────────────────────────────────────────────
@@ -107,7 +117,7 @@ async def upload_resume(file: UploadFile = File(...)):
         return result["parsed_resume"]
 
     except Exception as e:
-        logger.error(f"Failed to process resume: {e}")
+        logger.warning(f"Resume upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if os.path.exists(file_path):
@@ -132,7 +142,7 @@ async def extract_resume_text_endpoint(file: UploadFile = File(...), user_id: st
         raw_text = parse_resume_file(file_path, file_ext)
         return {"raw_text": raw_text}
     except Exception as e:
-        logger.error(f"Failed to extract text: {e}")
+        logger.warning(f"Text extraction failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         if os.path.exists(file_path):
@@ -193,11 +203,12 @@ async def run_tailor_pipeline(input_data: PipelineInput, user_id: str = Depends(
         "raw_jd": jd_text,
         "raw_resume": resume_text,
         "tone": "professional",
+        "missing_requirements": input_data.missing_requirements,
         "errors": []
     }
 
     try:
-        logger.info("Invoking LangGraph pipeline")
+        logger.debug("Invoking LangGraph pipeline")
         final_state = await jobfit_pipeline.ainvoke(initial_state)
 
         if not final_state.get("tailored_resume") or not final_state.get("cover_letter"):
@@ -226,7 +237,7 @@ async def run_tailor_pipeline(input_data: PipelineInput, user_id: str = Depends(
         )
 
     except Exception as e:
-        logger.error(f"Pipeline execution failed: {e}")
+        logger.warning(f"Pipeline execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -262,7 +273,7 @@ async def create_checkout(request: CheckoutSessionRequest, user_id: str = Depend
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Stripe checkout error: {e}")
+        logger.warning(f"Stripe checkout error: {e}")
         raise HTTPException(status_code=500, detail="Failed to create checkout session")
 
 
@@ -314,10 +325,22 @@ async def get_resumes(user_id: str = Depends(get_current_user_id)):
 @router.post("/api/resume")
 async def save_resume(request: SaveResumeRequest, user_id: str = Depends(get_current_user_id)):
     sb = get_supabase()
+    
+    # Parse the resume on upload so we don't have to re-parse it for every chat lookup
+    try:
+        from backend.pipeline.nodes.parse_resume import parse_resume_node
+        parse_result = await parse_resume_node({"raw_resume": request.raw_text})
+        parsed_resume = parse_result.get("parsed_resume")
+        parsed_json = parsed_resume.model_dump() if parsed_resume else None
+    except Exception as e:
+        logger.error(f"Failed to parse resume on upload: {e}")
+        parsed_json = None
+        
     resp = sb.table("base_resumes").insert({
         "user_id": user_id,
         "label": request.label,
         "raw_text": request.raw_text,
+        "parsed_json": parsed_json
     }).execute()
     return resp.data[0] if resp.data else {}
 
@@ -347,6 +370,10 @@ async def save_application(request: SaveApplicationRequest, user_id: str = Depen
         "role": request.role,
         "status": request.status,
         "notes": request.notes,
+        "job_url": request.job_url,
+        "resume_version_used": request.resume_version_used,
+        "cover_letter_generated": request.cover_letter_generated,
+        "fit_label": request.fit_label,
     }).execute()
     return resp.data[0] if resp.data else {}
 

@@ -96,6 +96,42 @@ Once the extension is loaded and both servers are running:
 3. Follow the authentication flow and hit "Tailor Resume".
 4. The extension will communicate with your local backend to generate the tailored documents!
 
+## 💬 Chat Interface (Phase 1 — Stubbed)
+
+A Happenstance-style conversational interface at `/chat` for company research and career Q&A. Phase 1 uses mocked company data; real connectors will be wired in Phase 2.
+
+### Running the Chat Migration
+Before using the chat feature, run the SQL migration in the **Supabase SQL Editor**:
+```
+File: backend/migrations/chat_migration.sql
+```
+This creates `chat_threads` and `chat_messages` tables with RLS policies.
+
+### Entity Detection Heuristic
+
+The current entity detection (`backend/chat/entity_detector.py`) uses a **simple regex/keyword-list approach**:
+
+1. **Curated list** (~60 companies): A hardcoded dictionary of well-known company names and aliases (e.g. "byju's", "byjus", "byju" all map to "BYJU'S"). Matches are case-insensitive with word-boundary regex.
+2. **Capitalized phrase fallback**: If no curated match is found, looks for capitalized multi-word phrases that aren't common English words (e.g. "Acme Corp") and treats them as possible entities.
+
+**To replace in Phase 2**: Swap the body of `detect_entity()` in `entity_detector.py` with a real NER model or LLM classifier call. Keep the return type as `EntityDetectionResult`. The routing logic in `graph.py` will not need to change.
+
+**Known gaps** (intentional for Phase 1):
+- No multi-entity disambiguation ("did you mean X or Y")
+- Single-word uncurated entities may not be detected (e.g. "Notion")
+- No acronym expansion (e.g. "FAANG" won't trigger individual companies)
+
+### Message Metadata
+Every assistant message stores metadata in the `chat_messages.metadata` JSONB column:
+```json
+{
+  "detected_entity": "Razorpay",       // or null
+  "response_type": "company_stub",     // or "generic"
+  "detection_method": "curated_list"   // or "capitalized_phrase" or "none"
+}
+```
+This enables Phase 3's company SPA to link back to the triggering message without schema migration.
+
 ## 🛣 Roadmap
 Check out the [tracker.md](./tracker.md) and [PRD.md](./PRD.md) files for detailed breakdown of completed and upcoming phases. Next up is Beta Testing, Quality Benchmarking, and Analytics integration.
 

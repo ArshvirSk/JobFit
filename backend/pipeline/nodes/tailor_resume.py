@@ -15,12 +15,19 @@ async def tailor_resume_node(state: dict) -> dict:
     if not parsed_resume or not parsed_jd:
         return {"errors": state.get("errors", []) + ["Missing parsed resume or parsed JD."]}
         
+    missing_reqs = state.get("missing_requirements")
+    if missing_reqs:
+        missing_section = "Identified Gaps (Try to reframe existing adjacent experience to address these if possible):\n" + "\n".join(f"- {r}" for r in missing_reqs)
+    else:
+        missing_section = ""
+
     try:
         prompt = TAILOR_PROMPT.format(
             role=parsed_jd.role_title,
             company=parsed_jd.company,
             responsibilities=", ".join(parsed_jd.responsibilities),
             keywords=", ".join(parsed_jd.keywords) if parsed_jd.keywords else "",
+            missing_requirements_section=missing_section,
             parsed_resume=parsed_resume.model_dump_json(indent=2)
         )
         
