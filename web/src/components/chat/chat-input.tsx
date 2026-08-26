@@ -58,7 +58,7 @@ export function ChatInput({ value, onChange, onSend, disabled }: ChatInputProps)
         <button
           onClick={onSend}
           disabled={disabled || !value.trim()}
-          className="h-9 w-9 rounded-full flex items-center justify-center
+          className="h-9 w-9 rounded-full flex items-center justify-center p-0 shrink-0 aspect-square
             bg-emerald-500 text-white
             shadow-sm hover:bg-emerald-600
             disabled:bg-zinc-200 disabled:dark:bg-muted disabled:text-zinc-400 disabled:dark:text-muted-foreground disabled:shadow-none
