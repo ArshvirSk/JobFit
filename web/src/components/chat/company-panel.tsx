@@ -274,7 +274,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </div>
 
         {/* Company Overview Section */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-sky-200/60 dark:border-sky-900/50 bg-sky-50/40 dark:bg-sky-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Info className="h-4 w-4 text-slate-600 dark:text-slate-400" /> Company Overview
@@ -330,7 +330,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* Funding Section */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-emerald-200/60 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <TrendingUp className="h-4 w-4 text-blue-600" /> Funding & Valuation
@@ -365,7 +365,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* Compensation Section */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-teal-200/60 dark:border-teal-900/50 bg-teal-50/40 dark:bg-teal-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2">
@@ -410,7 +410,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* Interview Process Section */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-indigo-200/60 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <ListChecks className="h-4 w-4 text-purple-600 dark:text-purple-400" /> Interview Process
@@ -450,7 +450,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* DSA / Interview Prep Section */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-orange-200/60 dark:border-orange-900/50 bg-orange-50/40 dark:bg-orange-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Code className="h-4 w-4 text-orange-600" /> Interview Prep — Coding
@@ -521,7 +521,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* Open Jobs Section */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-rose-200/60 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Briefcase className="h-4 w-4 text-purple-600" /> Open Jobs
@@ -610,7 +610,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
         
         {/* Ratings & Links */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Globe className="h-4 w-4 text-muted-foreground" /> Socials & Links
@@ -686,7 +686,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* Competitors */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-amber-200/60 dark:border-amber-900/50 bg-amber-50/40 dark:bg-amber-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Building2 className="h-4 w-4 text-orange-600" /> Competitors
@@ -710,7 +710,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         </Card>
 
         {/* Benefits */}
-        <Card className="shadow-sm">
+        <Card className="shadow-none border border-fuchsia-200/60 dark:border-fuchsia-900/50 bg-fuchsia-50/40 dark:bg-fuchsia-950/20 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-sm">
               <Heart className="h-4 w-4 text-red-500" /> Key Benefits
