@@ -95,8 +95,9 @@ async def get_company_digest(slug: str, user_id: str = Depends(get_current_user_
     entity_name = slug.replace("-", " ").title()
     sb = get_supabase()
 
-    # ── 1. Gather fit scores (from job_fit_scores cache) ─────────
+    # ── 1. Gather fit scores & Resume Context ─────────
     fit_summary = None
+    resume_context = None
     try:
         # Get user's latest resume
         resume_res = sb.table("base_resumes").select("id, parsed_json") \
@@ -105,6 +106,18 @@ async def get_company_digest(slug: str, user_id: str = Depends(get_current_user_
         
         if resume_res.data and resume_res.data[0].get("parsed_json"):
             resume_id = resume_res.data[0]["id"]
+            parsed = resume_res.data[0]["parsed_json"]
+            
+            # Extract basic resume context for the LLM
+            if isinstance(parsed, dict):
+                basics = parsed.get("basics", {})
+                resume_context = basics.get("summary") or basics.get("label") or ""
+                skills = parsed.get("skills", [])
+                if isinstance(skills, list) and skills:
+                    skill_names = [s.get("name") if isinstance(s, dict) else str(s) for s in skills[:5]]
+                    skill_str = ", ".join(filter(None, skill_names))
+                    if skill_str:
+                        resume_context += f" Core skills: {skill_str}."
             
             # Get all fit scores for this user
             fit_res = sb.table("job_fit_scores").select("fit_data") \
@@ -172,15 +185,25 @@ async def get_company_digest(slug: str, user_id: str = Depends(get_current_user_
         logger.warning(f"Failed to load compensation for digest: {e}")
 
     # ── 4. Generate the digest via LLM synthesis ─────────────────
-    # Build context parts (only include what we have)
+    # If we have absolutely no personal data (no resume, no fit scores, no tracker),
+    # we should NOT generate a digest just based on company-wide compensation.
+    if not (fit_summary or tracker_summary or resume_context):
+        return {
+            "digest": f"Exploring {entity_name}. Upload your resume to see a personalized fit summary for open roles.",
+            "has_data": False,
+        }
+
+    # Build context parts
     context_parts = []
+    
+    if resume_context:
+        context_parts.append(f"USER BACKGROUND: {resume_context}")
 
     if fit_summary:
         best = fit_summary.get("best_match")
         best_desc = ""
         if best:
-            # best is a JobFitScore dict
-            best_desc = f"Best match: job_index={best.get('job_index')}, summary: {best.get('summary', 'N/A')}"
+            best_desc = f"Best match role: {best.get('job_title', 'unknown role')} (Location: {best.get('job_location', 'unknown')}). Fit rationale: {best.get('summary', 'N/A')}"
         context_parts.append(
             f"FIT SCORES: {fit_summary['strong_matches']} strong matches, "
             f"{fit_summary['partial_matches']} partial matches, "
@@ -202,29 +225,22 @@ async def get_company_digest(slug: str, user_id: str = Depends(get_current_user_
         comp_desc = f"Average package: {comp_summary.get('average_package', 'unknown')}"
         if comp_summary.get("highest_package"):
             comp_desc += f", Highest: {comp_summary['highest_package']}"
-        context_parts.append(f"COMPENSATION DATA: {comp_desc}")
-
-    # If we have absolutely nothing, return a simple fallback
-    if not context_parts:
-        return {
-            "digest": f"Exploring {entity_name}. Upload a resume and track applications to get a personalized summary.",
-            "has_data": False,
-        }
+        context_parts.append(f"COMPANY-WIDE COMPENSATION (Context only, do not restate verbatim): {comp_desc}")
 
     context_text = "\n".join(context_parts)
 
     system_prompt = (
         "You are a concise career advisor. Generate a 2-3 sentence personalized digest "
-        "for a user looking at a company profile. The digest should:\n"
-        "- Reference specific numbers (how many roles match, which is the best fit)\n"
-        "- Mention compensation context if available\n"
-        "- Note any prior application history if available\n"
-        "- Be direct, factual, and helpful — no fluff\n"
-        "- Degrade gracefully: if some data is missing, write a shorter valid sentence "
-        "covering only what's available. Never mention missing data or apologize.\n"
+        "for a user looking at a company profile. The digest MUST:\n"
+        "- SYNTHESIZE the user's background with the company's open roles (referencing specific fit scores and best match role).\n"
+        "- Explicitly CONNECT the company to THIS user.\n"
+        "- NEVER restate company-wide average/highest compensation figures as the main point — that generic data is already shown elsewhere in the UI. Only mention pay loosely if it's relevant to their specific matched role or experience level.\n"
+        "- Note any prior application history if available.\n"
+        "- Be direct, factual, and helpful — no fluff.\n"
+        "- Write in second person ('you', 'your').\n"
         "- Do NOT use emojis.\n"
         "- Do NOT use markdown formatting.\n"
-        "- Write in second person ('you', 'your').\n"
+        "- If personal fit data is weak or missing, just summarize what is available gracefully without apologizing."
     )
 
     prompt = (
@@ -240,7 +256,7 @@ async def get_company_digest(slug: str, user_id: str = Depends(get_current_user_
         return {"digest": digest_text, "has_data": True}
     except Exception as e:
         logger.error(f"Failed to generate digest: {e}")
-        # Fallback: build a simple sentence from the data we have
+        # Fallback: build a simple sentence from the personal data we have
         parts = []
         if fit_summary and fit_summary["strong_matches"] > 0:
             parts.append(f"{fit_summary['strong_matches']} open role(s) strongly match your background")
@@ -249,8 +265,9 @@ async def get_company_digest(slug: str, user_id: str = Depends(get_current_user_
         if tracker_summary:
             parts.append(f"you have {tracker_summary['total_applications']} prior application(s) here")
         
-        fallback = f"At {entity_name}: " + ", and ".join(parts) + "." if parts else f"Exploring {entity_name}."
-        return {"digest": fallback, "has_data": bool(parts)}
+        if parts:
+            return {"digest": f"For {entity_name}, " + " and ".join(parts) + ".", "has_data": True}
+        return {"digest": f"Upload your resume to see personalized fit for {entity_name}.", "has_data": False}
 
 # ── Watch & Notification Routes ───────────────────────────
 
