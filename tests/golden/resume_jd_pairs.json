@@ -1,0 +1,129 @@
+[
+  {
+    "id": "gold-001",
+    "resume": {
+      "name": "Ananya Sharma",
+      "contact_info": "ananya.sharma@example.com | +91-98200-00001",
+      "summary": "Backend engineer with 4 years building Python microservices and data pipelines at fintech startups.",
+      "experience": [
+        {
+          "company": "PayZippy",
+          "role": "Software Engineer",
+          "start_date": "2022-06",
+          "end_date": null,
+          "bullets": [
+            "Built payment reconciliation microservices in Python handling 2M transactions/day",
+            "Cut batch settlement pipeline runtime from 4 hours to 25 minutes",
+            "Owned Postgres schema design and query optimization for ledger service"
+          ]
+        },
+        {
+          "company": "FinEdge Labs",
+          "role": "Junior Developer",
+          "start_date": "2021-07",
+          "end_date": "2022-05",
+          "bullets": [
+            "Automated invoice processing workflows reducing manual review by 60%"
+          ]
+        }
+      ],
+      "education": [
+        {"institution": "VJTI Mumbai", "degree": "B.Tech Computer Engineering", "graduation_date": "2021"}
+      ],
+      "skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "Redis", "Kafka", "AWS", "Git", "pytest", "Celery"]
+    },
+    "jd": {
+      "role_title": "Senior Backend Engineer",
+      "company": "Razorledger",
+      "required_skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "AWS", "Kafka"],
+      "preferred_skills": ["Redis", "Celery", "Terraform"],
+      "seniority": "Senior",
+      "responsibilities": [
+        "Design and scale payment processing services",
+        "Own relational schema design and query performance",
+        "Build event-driven pipelines with Kafka",
+        "Mentor junior engineers and lead code reviews"
+      ],
+      "keywords": ["payments", "microservices", "high-throughput", "event-driven", "schema design"]
+    },
+    "notes": "Strong overlap case: most required skills present; expect high keyword coverage, zero fabricated entities."
+  },
+  {
+  "id": "gold-002",
+    "resume": {
+      "name": "Rohan Mehta",
+      "contact_info": "rohan.mehta@example.com | github.com/rohanm",
+      "summary": "Frontend developer specializing in React and design systems for B2B SaaS.",
+      "experience": [
+        {
+          "company": "CloudCart",
+          "role": "Frontend Engineer",
+          "start_date": "2023-01",
+          "end_date": null,
+          "bullets": [
+            "Shipped a component library used by 40+ internal teams",
+            "Reduced bundle size by 35% via code-splitting and lazy loading"
+          ]
+        }
+      ],
+      "education": [
+        {"institution": "COEP Pune", "degree": "B.E. Information Technology", "graduation_date": "2022"}
+      ],
+      "skills": ["JavaScript", "TypeScript", "React", "Next.js", "TailwindCSS", "Redux", "Vite", "Jest"]
+    },
+    "jd": {
+      "role_title": "Data Engineer",
+      "company": "Streamlyne",
+      "required_skills": ["Python", "Spark", "Airflow", "SQL", "AWS Glue"],
+      "preferred_skills": ["dbt", "Kafka"],
+      "seniority": "Mid",
+      "responsibilities": [
+        "Build and maintain ETL pipelines in Spark",
+        "Orchestrate workflows in Airflow",
+        "Model warehouse tables for analytics"
+      ],
+      "keywords": ["ETL", "data modeling", "pipelines", "warehouse"]
+    },
+    "notes": "Mismatch case: frontend candidate vs data-engineering JD; tailoring must reframe, not fabricate Spark experience. Low coverage is EXPECTED here — the honest outcome is faithfulness=1.0 with coverage below threshold.",
+    "expected_coverage_pass": false
+  },
+  {
+    "id": "gold-003",
+    "resume": {
+      "name": "Priya Nair",
+      "contact_info": "priya.nair@example.com | +91-98450-00003",
+      "summary": "ML engineer with 3 years of experience in recommendation systems and MLOps.",
+      "experience": [
+        {
+          "company": "Bingebox",
+          "role": "ML Engineer",
+          "start_date": "2023-03",
+          "end_date": null,
+          "bullets": [
+            "Trained and deployed ranking models serving 5M daily recommendations",
+            "Built feature-store pipelines cutting feature latency by 45%",
+            "Ran A/B tests that lifted watch-time per session by 8%"
+          ]
+        }
+      ],
+      "education": [
+        {"institution": "NIT Surathkal", "degree": "B.Tech CSE", "graduation_date": "2022"}
+      ],
+      "skills": ["Python", "PyTorch", "scikit-learn", "SQL", "Docker", "Kubernetes", "MLflow", "AWS", "Airflow"]
+    },
+    "jd": {
+      "role_title": "Machine Learning Engineer",
+      "company": "VoltAI",
+      "required_skills": ["Python", "PyTorch", "MLOps", "AWS", "Docker"],
+      "preferred_skills": ["Kubernetes", "MLflow", "Airflow"],
+      "seniority": "Mid-Senior",
+      "responsibilities": [
+        "Train and deploy deep learning models in production",
+        "Build training pipelines and experiment tracking",
+        "Own model monitoring and drift detection"
+      ],
+      "keywords": ["model deployment", "training pipelines", "experiment tracking", "drift detection", "A/B testing"]
+    },
+    "notes": "Strong overlap case for an ML JD; skills like A/B testing appear in bullets but not skills list — tests bullet-level coverage."
+  }
+]

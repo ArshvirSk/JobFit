@@ -1,7 +1,9 @@
 "use client";
 
+import * as React from "react";
+
 import { cn } from "@/lib/utils";
-import { User, Bot, ArrowRight, Loader2, CheckCircle2, CircleDashed, AlertTriangle, RefreshCcw } from "lucide-react";
+import { User, Bot, ArrowRight, Loader2, CheckCircle2, CircleDashed, AlertTriangle, RefreshCcw, Mail, ExternalLink } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
@@ -15,9 +17,11 @@ interface MessageBubbleProps {
   metadata?: any;
   onOpenProfile?: (slug: string) => void;
   onRetry?: () => void;
+  onDraftFollowUp?: (payload: { company: string; role: string; application_id?: string; days_since?: number }) => void;
+  onTailor?: (url: string, gaps?: string[]) => void;
 }
 
-export function MessageBubble({ role, content, isStreaming, isError, metadata, onOpenProfile, onRetry }: MessageBubbleProps) {
+export function MessageBubble({ role, content, isStreaming, isError, metadata, onOpenProfile, onRetry, onDraftFollowUp, onTailor }: MessageBubbleProps) {
   const isUser = role === "user";
 
   return (
@@ -133,6 +137,23 @@ export function MessageBubble({ role, content, isStreaming, isError, metadata, o
           </div>
         )}
 
+        {metadata?.response_type === "email_draft" && metadata?.action_metadata && !isStreaming && (
+          <EmailDraftPreview metadata={metadata.action_metadata} />
+        )}
+
+        {metadata?.response_type === "calendar_draft" && metadata?.action_metadata && !isStreaming && (
+          <CalendarDraftPreview metadata={metadata.action_metadata} />
+        )}
+
+        {metadata?.action_buttons && metadata.action_buttons.length > 0 && !isStreaming && (
+          <ActionButtonsBar
+            buttons={metadata.action_buttons}
+            onOpenProfile={onOpenProfile}
+            onDraftFollowUp={onDraftFollowUp}
+            onTailor={onTailor}
+          />
+        )}
+
         {isError && (
           <div className="mt-4 p-4 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg flex flex-col gap-3">
             <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
@@ -153,6 +174,195 @@ export function MessageBubble({ role, content, isStreaming, isError, metadata, o
         )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function EmailDraftPreview({ metadata }: { metadata: any }) {
+  const [status, setStatus] = React.useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = React.useState("");
+
+  const handleSend = async () => {
+    setStatus("loading");
+    try {
+      const { api } = await import("@/lib/api");
+      await api.sendEmail({
+        recipient: metadata.recipient,
+        subject: metadata.subject,
+        body: metadata.body
+      });
+      setStatus("success");
+    } catch (e: any) {
+      if (e.response?.status === 403) {
+        // Need to re-auth
+        setErrorMsg("Missing Gmail scopes. Please reconnect Gmail in Settings.");
+      } else {
+        setErrorMsg("Failed to send email.");
+      }
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="mt-4 p-4 border border-border bg-card rounded-xl flex flex-col gap-3 text-sm">
+      <div className="flex items-center gap-2 border-b border-border pb-2">
+        <span className="font-semibold text-foreground">Draft Email</span>
+      </div>
+      <div><span className="text-muted-foreground font-medium">To:</span> {metadata.recipient}</div>
+      <div><span className="text-muted-foreground font-medium">Subject:</span> {metadata.subject}</div>
+      <div className="whitespace-pre-wrap mt-2 p-3 bg-muted/50 rounded-lg">{metadata.body}</div>
+      
+      {status === "error" && <div className="text-red-500 mt-2 text-xs">{errorMsg}</div>}
+      
+      <div className="mt-2 flex justify-end">
+        {status === "success" ? (
+          <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Sent</span>
+        ) : (
+          <Button onClick={handleSend} disabled={status === "loading"}>
+            {status === "loading" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Confirm & Send
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CalendarDraftPreview({ metadata }: { metadata: any }) {
+  const [status, setStatus] = React.useState<"idle" | "loading" | "success" | "error">("idle");
+  const [errorMsg, setErrorMsg] = React.useState("");
+
+  const handleCreate = async () => {
+    setStatus("loading");
+    try {
+      const { api } = await import("@/lib/api");
+      await api.createCalendarEvent({
+        title: metadata.title,
+        start_time: metadata.start_time,
+        end_time: metadata.end_time,
+        description: metadata.description
+      });
+      setStatus("success");
+    } catch (e: any) {
+      if (e.response?.status === 403) {
+        setErrorMsg("Missing Calendar scopes. Please reconnect Google Calendar in Settings.");
+      } else {
+        setErrorMsg("Failed to create event.");
+      }
+      setStatus("error");
+    }
+  };
+
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <div className="mt-4 p-4 border border-border bg-card rounded-xl flex flex-col gap-3 text-sm">
+      <div className="flex items-center gap-2 border-b border-border pb-2">
+        <span className="font-semibold text-foreground">Draft Calendar Event</span>
+      </div>
+      <div><span className="text-muted-foreground font-medium">Title:</span> {metadata.title}</div>
+      <div><span className="text-muted-foreground font-medium">Start:</span> {formatDate(metadata.start_time)}</div>
+      <div><span className="text-muted-foreground font-medium">End:</span> {formatDate(metadata.end_time)}</div>
+      {metadata.description && (
+        <div className="whitespace-pre-wrap mt-2 p-3 bg-muted/50 rounded-lg">{metadata.description}</div>
+      )}
+      
+      {status === "error" && <div className="text-red-500 mt-2 text-xs">{errorMsg}</div>}
+      
+      <div className="mt-2 flex justify-end">
+        {status === "success" ? (
+          <span className="text-green-600 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Created</span>
+        ) : (
+          <Button onClick={handleCreate} disabled={status === "loading"}>
+            {status === "loading" ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Create Event
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+interface ActionButtonsBarProps {
+  buttons: Array<{
+    label: string;
+    action_type: string;
+    payload: Record<string, any>;
+  }>;
+  onOpenProfile?: (slug: string) => void;
+  onDraftFollowUp?: (payload: { company: string; role: string; application_id?: string; days_since?: number }) => void;
+  onTailor?: (url: string, gaps?: string[]) => void;
+}
+
+function ActionButtonsBar({ buttons, onOpenProfile, onDraftFollowUp, onTailor }: ActionButtonsBarProps) {
+  return (
+    <div className="mt-4 pt-3 border-t border-border flex flex-wrap gap-2">
+      {buttons.map((btn, idx) => {
+        switch (btn.action_type) {
+          case "open_profile":
+            return (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => onOpenProfile?.(btn.payload.slug as string)}
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                {btn.label}
+              </Button>
+            );
+          case "email_draft":
+            return (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => onDraftFollowUp?.({
+                  company: btn.payload.company as string,
+                  role: btn.payload.role as string,
+                  application_id: btn.payload.application_id as string | undefined,
+                  days_since: btn.payload.days_since as number | undefined,
+                })}
+              >
+                <Mail className="h-3.5 w-3.5" />
+                {btn.label}
+              </Button>
+            );
+          case "open_tailor":
+            return (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => onTailor?.(btn.payload.url as string, btn.payload.gaps as string[] | undefined)}
+              >
+                <ArrowRight className="h-3.5 w-3.5" />
+                {btn.label}
+              </Button>
+            );
+          default:
+            return (
+              <Button
+                key={idx}
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+              >
+                {btn.label}
+              </Button>
+            );
+        }
+      })}
     </div>
   );
 }

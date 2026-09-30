@@ -16,6 +16,7 @@ interface BaseResume {
   id: string;
   label: string;
   raw_text: string;
+  parsed_json: any;
   created_at: string;
 }
 
@@ -35,6 +36,9 @@ export default function ResumesPage() {
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<BaseResume | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Reparse state
+  const [isReparsing, setIsReparsing] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,17 +85,39 @@ export default function ResumesPage() {
     if (!newLabel.trim() || !newText.trim()) return;
     setIsSaving(true);
     try {
-      await api.saveResume(newLabel, newText);
+      const res = await api.saveResume(newLabel, newText);
+      if (res.data?.parse_confidence === "low") {
+        toast.warning("Parse Warning: " + res.data.parse_warnings?.join(", "));
+      } else {
+        toast.success("Resume saved and parsed successfully!");
+      }
       setNewLabel("");
       setNewText("");
       setIsAdding(false);
-      toast.success("Resume saved successfully!");
       await fetchResumes();
     } catch (error) {
       console.error("Failed to save resume:", error);
       toast.error("Failed to save resume. Please try again.");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleReparse = async (resumeId: string) => {
+    setIsReparsing(resumeId);
+    try {
+      const res = await api.reparseResume(resumeId);
+      if (res.data?.confidence === "low") {
+        toast.warning("Parse Warning: " + res.data.warnings?.join(", "));
+      } else {
+        toast.success("Resume re-parsed successfully!");
+      }
+      await fetchResumes();
+    } catch (error) {
+      console.error("Failed to re-parse resume:", error);
+      toast.error("Failed to re-parse resume.");
+    } finally {
+      setIsReparsing(null);
     }
   };
 
@@ -206,14 +232,30 @@ export default function ResumesPage() {
                 <FileText className="h-4 w-4 text-zinc-500" />
                 {resume.label}
               </CardTitle>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="text-red-500 hover:text-red-700 hover:bg-red-50"
-                onClick={() => setDeleteTarget(resume)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  className="h-8 px-2 text-xs"
+                  onClick={() => handleReparse(resume.id)}
+                  disabled={isReparsing === resume.id}
+                >
+                  {isReparsing === resume.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <FileText className="h-3 w-3 mr-1" />
+                  )}
+                  Re-parse
+                </Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8"
+                  onClick={() => setDeleteTarget(resume)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="flex-1">
               <p className="text-xs text-zinc-500 line-clamp-6 font-mono whitespace-pre-wrap">

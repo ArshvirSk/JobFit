@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { FileText, LayoutDashboard, Settings, User, Library, Briefcase, Loader2, Menu, X, MessageSquare, ChevronDown, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { FileText, LayoutDashboard, Settings, User, Library, Briefcase, Loader2, Menu, X, MessageSquare, ChevronDown, ChevronRight, Plus, Trash2, LogOut } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { setAuthToken } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChatProvider, useChat } from "@/components/chat/chat-context";
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
+import { RetroactiveModal } from "@/components/onboarding/RetroactiveModal";
 import {
   Dialog,
   DialogContent,
@@ -24,7 +25,6 @@ const navigation = [
   { name: "Tailor Resume", href: "/tailor", icon: FileText },
   { name: "Base Resumes", href: "/resumes", icon: Library },
   { name: "App Tracker", href: "/tracker", icon: Briefcase },
-  { name: "Billing & Plans", href: "/billing", icon: Settings },
 ];
 
 function formatRelativeTime(dateStr: string): string {
@@ -55,10 +55,53 @@ function DashboardInner({
   // Chat state from context
   const { threads, deleteThread } = useChat();
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
+  
+  // Retroactive Modal State
+  const [showRetroModal, setShowRetroModal] = useState(false);
+  const [hasResume, setHasResume] = useState(false);
+
+  const isOnboarding = pathname.startsWith("/onboarding");
+
   // Sync JWT token to the API client whenever session changes
   useEffect(() => {
     setAuthToken(session?.access_token ?? null);
   }, [session]);
+
+  // Handle onboarding redirects and retroactive modal
+  useEffect(() => {
+    if (user && !user.onboarding_completed_at && pathname !== "/onboarding") {
+      // Check if they are an existing Pro user
+      if (user.plan_tier === "pro") {
+        const dismissCount = parseInt(localStorage.getItem("retro_modal_dismiss_count") || "0");
+        if (dismissCount < 3) {
+          // Check if they have a resume
+          fetch(`${process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000"}/api/resume`, {
+            headers: { "Authorization": `Bearer ${session?.access_token}` }
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.length > 0) setHasResume(true);
+            setShowRetroModal(true);
+          })
+          .catch(err => console.error("Failed to check resumes:", err));
+        }
+      } else {
+        // Force new free users to onboarding if not completed
+        // Only redirect if they are definitively a new user (created in last hour)
+        const isNewUser = user.created_at && (new Date().getTime() - new Date(user.created_at).getTime() < 1000 * 60 * 60);
+        if (isNewUser) {
+          router.replace("/onboarding");
+        }
+      }
+    }
+  }, [user, pathname, router, session]);
+
+  const handleCloseRetroModal = () => {
+    const currentCount = parseInt(localStorage.getItem("retro_modal_dismiss_count") || "0");
+    localStorage.setItem("retro_modal_dismiss_count", (currentCount + 1).toString());
+    setShowRetroModal(false);
+  };
+
 
   // Auth guard: redirect to login if not authenticated
   useEffect(() => {
@@ -185,19 +228,40 @@ function DashboardInner({
         )}
       </nav>
 
-      <div className="p-4 shrink-0 flex items-center justify-between group cursor-pointer hover:bg-zinc-200/50 dark:hover:bg-accent transition-colors mx-2 rounded-md mb-2">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="p-4 shrink-0 flex items-center justify-between group mx-2 rounded-md mb-2 hover:bg-zinc-200/50 dark:hover:bg-accent transition-colors">
+        <div 
+          className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer" 
+          onClick={() => {
+            router.push('/settings');
+            if (window.innerWidth < 768) setSidebarOpen(false);
+          }}
+        >
           <div className="h-8 w-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center shrink-0">
             <User className="h-4 w-4 text-emerald-600" />
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-medium text-foreground truncate">{user?.name || session.user.email}</span>
-            <span className="text-[10px] text-muted-foreground capitalize">{(user?.plan_tier || "free").replace(/_/g, ' ')} Plan</span>
           </div>
         </div>
-        <button onClick={handleLogout} className="p-1 rounded-md text-muted-foreground hover:text-foreground">
-          <Settings className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <button 
+            onClick={() => {
+              router.push('/settings');
+              if (window.innerWidth < 768) setSidebarOpen(false);
+            }} 
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-zinc-300/50 dark:hover:bg-zinc-800 hover:text-foreground transition-colors"
+            title="Settings"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+          <button 
+            onClick={handleLogout} 
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+            title="Log out"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </>
   );
@@ -213,28 +277,32 @@ function DashboardInner({
       )}
 
       {/* Sidebar — desktop: always visible, mobile: slide-in drawer */}
-      <div
-        className={cn(
-          "fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50 dark:bg-card flex flex-col",
-          "transform transition-transform duration-200 ease-in-out",
-          "md:relative md:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        )}
-      >
-        {sidebarContent}
-      </div>
+      {!isOnboarding && (
+        <div
+          className={cn(
+            "fixed inset-y-0 left-0 z-50 w-64 bg-zinc-50 dark:bg-card flex flex-col",
+            "transform transition-transform duration-200 ease-in-out",
+            "md:relative md:translate-x-0",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          )}
+        >
+          {sidebarContent}
+        </div>
+      )}
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto flex flex-col min-w-0">
         <header className="h-16 flex items-center justify-between px-4 md:px-8 shrink-0">
           {/* Hamburger — only visible on mobile */}
-          <button
-            className="md:hidden p-2 rounded-md hover:bg-accent transition-colors"
-            onClick={() => setSidebarOpen(true)}
-            aria-label="Open sidebar"
-          >
-            <Menu className="h-5 w-5 text-foreground" />
-          </button>
+          {!isOnboarding && (
+            <button
+              className="md:hidden p-2 rounded-md hover:bg-accent transition-colors"
+              onClick={() => setSidebarOpen(true)}
+              aria-label="Open sidebar"
+            >
+              <Menu className="h-5 w-5 text-foreground" />
+            </button>
+          )}
           <div className="md:hidden" /> {/* spacer */}
           <div className="flex items-center gap-2 ml-auto">
             <ModeToggle />
@@ -243,6 +311,19 @@ function DashboardInner({
             </Badge>
           </div>
         </header>
+
+        {/* Onboarding Banner */}
+        {user && !user.onboarding_completed_at && !isOnboarding && (
+          <div className="bg-blue-50 border-b border-blue-100 px-4 py-3 sm:px-6 lg:px-8 flex items-center justify-between shrink-0">
+            <p className="text-sm text-blue-700">
+              <span className="font-semibold">Setup incomplete.</span> You haven't finished setting up your profile. Some features may be limited.
+            </p>
+            <Link href="/onboarding?existing=true">
+              <Button size="sm" variant="outline" className="bg-white text-blue-700 border-blue-200 hover:bg-blue-50">Complete Setup</Button>
+            </Link>
+          </div>
+        )}
+
         {/* Make main padding 0 if on chat page to allow edge-to-edge chat UI */}
         <main className={cn(
           "w-full flex-1 flex flex-col min-h-0",
@@ -276,6 +357,12 @@ function DashboardInner({
           </div>
         </DialogContent>
       </Dialog>
+      
+      <RetroactiveModal 
+        isOpen={showRetroModal} 
+        onClose={handleCloseRetroModal} 
+        hasResume={hasResume} 
+      />
     </div>
   );
 }

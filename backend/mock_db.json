@@ -4,7 +4,7 @@
       "id": "usr_mock_123",
       "name": "Arshvir Singh Kalsi",
       "email": "test@example.com",
-      "plan_tier": "free",
+      "plan_tier": "pro",
       "credits_used": 0,
       "credits_limit": 3
     }

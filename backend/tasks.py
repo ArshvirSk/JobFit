@@ -79,7 +79,12 @@ async def _process_watched_companies():
                 # 6. Score new jobs
                 if jobs_to_score:
                     logger.info(f"Scoring {len(jobs_to_score)} new jobs for user {user_id} at {company_name}")
-                    batched_results = await score_jobs_fit(parsed_resume, jobs_to_score)
+                    
+                    # Fetch GitHub signal if available
+                    github_res = sb.table("base_resumes").select("raw_text").eq("user_id", user_id).eq("label", "GitHub Profile").execute()
+                    github_signal = github_res.data[0]["raw_text"] if github_res.data else None
+                    
+                    batched_results = await score_jobs_fit(parsed_resume, jobs_to_score, github_signal)
                     
                     for score in batched_results.scores:
                         if score.job_index < len(jobs_to_score):
@@ -109,3 +114,65 @@ async def _process_watched_companies():
 
         except Exception as e:
             logger.error(f"Error processing watched company {company_name}: {e}")
+
+
+from backend.services.sync_gmail import sync_gmail_for_user
+from backend.services.sync_calendar import sync_calendar_for_user
+from backend.services.encryption import decrypt
+
+async def run_connector_sync_loop():
+    """
+    Background polling loop that checks active user connectors and syncs data.
+    """
+    logger.info("Starting connector sync loop...")
+    while True:
+        try:
+            await _process_connectors()
+        except Exception as e:
+            logger.error(f"Error in connector sync loop: {e}")
+        
+        # Sleep for 15 minutes
+        await asyncio.sleep(900)
+
+async def _process_connectors():
+    sb = get_supabase()
+    
+    # 1. Get all active connectors
+    res = sb.table("user_connectors").select("*").eq("status", "active").execute()
+    if not res.data:
+        return
+        
+    for connector in res.data:
+        try:
+            user_id = connector["user_id"]
+            provider = connector["provider"]
+            last_synced_at = connector.get("last_synced_at")
+            encrypted_token = connector.get("encrypted_access_token")
+            
+            if not encrypted_token:
+                continue
+                
+            access_token = decrypt(encrypted_token)
+            
+            if provider == "google":
+                # Google provides both gmail and calendar scopes (if granted)
+                scopes = connector.get("scopes_granted", [])
+                
+                if "https://www.googleapis.com/auth/gmail.readonly" in scopes:
+                    await sync_gmail_for_user(user_id, access_token, last_synced_at)
+                    
+                if "https://www.googleapis.com/auth/calendar.readonly" in scopes:
+                    await sync_calendar_for_user(user_id, access_token, last_synced_at)
+                    
+            elif provider == "github":
+                # GitHub signal is pulled dynamically during onboarding and during fit-scoring,
+                # but we could re-sync repos here in the future if needed.
+                pass
+                
+            # Update last_synced_at
+            sb.table("user_connectors").update({
+                "last_synced_at": datetime.now(timezone.utc).isoformat()
+            }).eq("id", connector["id"]).execute()
+            
+        except Exception as e:
+            logger.error(f"Error syncing connector {connector.get('id')}: {e}")

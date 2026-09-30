@@ -21,6 +21,8 @@ interface MessageListProps {
   onSuggestionClick: (text: string) => void;
   onOpenProfile?: (slug: string) => void;
   onRetry?: (messageId: string) => void;
+  onDraftFollowUp?: (payload: { company: string; role: string; application_id?: string; days_since?: number }) => void;
+  onTailor?: (url: string, gaps?: string[]) => void;
 }
 
 export function MessageList({
@@ -30,6 +32,8 @@ export function MessageList({
   onSuggestionClick,
   onOpenProfile,
   onRetry,
+  onDraftFollowUp,
+  onTailor,
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -69,6 +73,8 @@ export function MessageList({
             metadata={msg.metadata}
             onOpenProfile={onOpenProfile}
             onRetry={onRetry && msg.isError ? () => onRetry(msg.id) : undefined}
+            onDraftFollowUp={onDraftFollowUp}
+            onTailor={onTailor}
           />
         ))}
 

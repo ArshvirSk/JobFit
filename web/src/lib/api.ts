@@ -1,7 +1,7 @@
 import axios from "axios";
 import { createClient } from "@/lib/supabase";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -10,13 +10,26 @@ const apiClient = axios.create({
   },
 });
 
+export let extensionToken: string | null = null;
+export function setExtensionAuthToken(token: string) {
+  extensionToken = token;
+  if (typeof globalThis !== 'undefined') {
+    (globalThis as any).__jobfit_ext_token = token;
+  }
+}
+
 // ── JWT Interceptor ─────────────────────────────────────
-// Dynamically attaches the Supabase access token to every outgoing request.
-// This eliminates the race condition where child components fire API calls
-// before the layout's useEffect has synced the token.
 apiClient.interceptors.request.use(async (config) => {
   try {
-    const supabase = createClient();
+  const rawToken = extensionToken || (typeof globalThis !== 'undefined' ? (globalThis as any).__jobfit_ext_token : null);
+  const token = (rawToken && rawToken !== "null" && rawToken !== "undefined") ? rawToken : null;
+  
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  }
+  
+  const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
       config.headers.Authorization = `Bearer ${session.access_token}`;
@@ -87,6 +100,12 @@ export const api = {
   deleteResume: (resumeId: string) =>
     apiClient.delete(`/api/resume/${resumeId}`),
 
+  reparseResume: (resumeId: string) =>
+    apiClient.post(`/api/resume/${resumeId}/reparse`),
+
+  scoreFit: (resumeId: string, jdText: string, extra?: { company?: string, role?: string }) =>
+    apiClient.post(`/api/fit-score`, { base_resume_id: resumeId, jd_text: jdText, ...extra }),
+
   // --- Application Tracker ---
   getApplications: () =>
     apiClient.get("/api/applications"),
@@ -111,6 +130,28 @@ export const api = {
   createCheckoutSession: (planTier: string) =>
     apiClient.post("/api/billing/checkout", { plan_tier: planTier }),
 
+  // --- Company ---
+  getLinkedinConnections: (slug: string) =>
+    apiClient.get(`/api/company/${slug}/linkedin_connections`),
+    
+  generateOutreachDraft: (slug: string, bestFitRole?: string, githubProject?: string) =>
+    apiClient.post(`/api/company/${slug}/outreach_draft`, {
+      best_fit_role: bestFitRole,
+      github_project: githubProject
+    }),
+    
+  addManualContact: (slug: string, data: { name: string, title?: string, note?: string, linkedin_url?: string }) =>
+    apiClient.post(`/api/company/${slug}/manual_contacts`, data),
+    
+  updateManualContact: (slug: string, id: string, data: { name: string, title?: string, note?: string, linkedin_url?: string }) =>
+    apiClient.put(`/api/company/${slug}/manual_contacts/${id}`, data),
+    
+  deleteManualContact: (slug: string, id: string) =>
+    apiClient.delete(`/api/company/${slug}/manual_contacts/${id}`),
+
+  getGithubMatch: (slug: string) =>
+    apiClient.get(`/api/company/${slug}/github_match`),
+
   // --- Watch & Notifications ---
   watchCompany: (slug: string) =>
     apiClient.post(`/api/company/${slug}/watch`),
@@ -126,4 +167,21 @@ export const api = {
     
   markNotificationRead: (notifId: string) =>
     apiClient.post(`/api/company/notifications/${notifId}/read`),
+    
+  // --- Detected Events ---
+  getDetectedEvents: () =>
+    apiClient.get("/api/detected_events"),
+    
+  dismissDetectedEvent: (eventId: string) =>
+    apiClient.post(`/api/detected_events/${eventId}/dismiss`),
+    
+  confirmDetectedEvent: (eventId: string) =>
+    apiClient.post(`/api/detected_events/${eventId}/confirm`),
+
+  // --- Project Ideas ---
+  generateProjectIdea: (slug: string, jobHash: string, data: { skill_gap: string, company_name: string, job_title: string }) =>
+    apiClient.post(`/api/company/${slug}/jobs/${jobHash}/project_ideas`, data),
+    
+  updateProjectIdeaStatus: (slug: string, jobHash: string, ideaId: string, status: string) =>
+    apiClient.patch(`/api/company/${slug}/jobs/${jobHash}/project_ideas/${ideaId}/status`, { status }),
 };

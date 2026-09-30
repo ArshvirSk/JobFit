@@ -1,6 +1,6 @@
 import logging
 import json
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from backend.services.llm import llm_service
 
@@ -27,20 +27,25 @@ Do NOT hallucinate information not in the resume."""
 FIT_SCORING_PROMPT = """Candidate Resume:
 {resume_json}
 
+{github_signal_text}
+
 Open Jobs:
 {jobs_json}
 
 Analyze the fit for each job and return the structured response. Make sure to return exactly one score per job provided."""
 
-async def score_jobs_fit(parsed_resume: dict, jobs: List[dict]) -> BatchedJobFitScores:
+async def score_jobs_fit(parsed_resume: dict, jobs: List[dict], github_signal: Optional[str] = None) -> BatchedJobFitScores:
     """Batch score a list of open jobs against a candidate's resume."""
     if not jobs:
         return BatchedJobFitScores(scores=[])
         
     jobs_with_index = [{"index": idx, **job} for idx, job in enumerate(jobs)]
     
+    github_signal_text = f"Additional GitHub Signal (Evidence of Skills):\n{github_signal}" if github_signal else ""
+    
     prompt = FIT_SCORING_PROMPT.format(
         resume_json=json.dumps(parsed_resume, indent=2),
+        github_signal_text=github_signal_text,
         jobs_json=json.dumps(jobs_with_index, indent=2)
     )
     

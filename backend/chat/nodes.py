@@ -21,10 +21,30 @@ async def generic_response_node(state: dict) -> dict:
     """
     Generate a helpful generic conversational response.
 
-    Uses the existing Google GenAI LLM service for a real (but cheap)
-    streamed reply. Falls back to a canned response if the LLM call fails.
+    Uses structured output to optionally return an email or calendar draft
+    if requested by the user.
     """
     from backend.services.llm import llm_service
+    from pydantic import BaseModel, Field
+    from typing import Optional
+    import json
+
+    class EmailDraft(BaseModel):
+        recipient: str
+        subject: str
+        body: str
+
+    class CalendarDraft(BaseModel):
+        title: str
+        start_time: str = Field(description="ISO 8601 format")
+        end_time: str = Field(description="ISO 8601 format")
+        description: str
+
+    class ChatResponse(BaseModel):
+        message: str = Field(description="The conversational text response to the user.")
+        action_type: Optional[str] = Field(description="'email_draft', 'calendar_draft', or null")
+        email_draft: Optional[EmailDraft] = None
+        calendar_draft: Optional[CalendarDraft] = None
 
     user_message = state.get("user_message", "")
     chat_history = state.get("chat_history", [])
@@ -44,16 +64,29 @@ async def generic_response_node(state: dict) -> dict:
         "Keep your responses concise, friendly, and actionable. "
         "If asked about a specific company, mention that you can provide detailed "
         "company insights if the user asks directly (e.g. 'Tell me about Razorpay').\n"
-        "IMPORTANT: Do NOT use emojis anywhere in your response."
+        "IMPORTANT: Do NOT use emojis anywhere in your response.\n\n"
+        "If the user asks you to draft an email (e.g. to a recruiter, for an interview follow-up, etc.), "
+        "you MUST set action_type='email_draft' and provide the 'email_draft' object. Your 'message' should just introduce the draft.\n"
+        "If the user asks you to create a calendar event or schedule something, "
+        "you MUST set action_type='calendar_draft' and provide the 'calendar_draft' object. Your 'message' should introduce it."
     )
 
     prompt = f"{history_text}User: {user_message}\nAssistant:"
 
     try:
-        response_text = await llm_service.generate_text(system_prompt, prompt)
-        # Store full response for DB persistence
-        state["response_text"] = response_text
-        state["response_type"] = "generic"
+        response_data = await llm_service.generate_structured(system_prompt, prompt, ChatResponse)
+        state["response_text"] = response_data.message
+        
+        if response_data.action_type == "email_draft" and response_data.email_draft:
+            state["response_type"] = "email_draft"
+            # Add metadata for the UI
+            state["action_metadata"] = response_data.email_draft.model_dump()
+        elif response_data.action_type == "calendar_draft" and response_data.calendar_draft:
+            state["response_type"] = "calendar_draft"
+            state["action_metadata"] = response_data.calendar_draft.model_dump()
+        else:
+            state["response_type"] = "generic"
+            
         return state
     except Exception as e:
         logger.warning(f"LLM call failed in generic_response_node: {e}")
@@ -112,6 +145,7 @@ async def evaluate_job_fit_node(state: dict) -> dict:
             # Create stable hash for job
             job_str = f"{job['title']}|{job['location']}"
             job_hash = hashlib.sha256(job_str.encode()).hexdigest()
+            job["job_hash"] = job_hash  # add hash to the response
             
             # Check DB cache
             cache_res = supabase.table("job_fit_scores").select("fit_data").eq("user_id", user_id).eq("job_hash", job_hash).eq("resume_id", resume_id).execute()

@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useEffect, KeyboardEvent } from "react";
-import { Send } from "lucide-react";
+import { KeyboardEvent, useEffect, useRef } from "react";
 
 interface ChatInputProps {
   value: string;
@@ -54,7 +53,7 @@ export function ChatInput({ value, onChange, onSend, disabled }: ChatInputProps)
         rows={1}
         className="w-full resize-none bg-transparent text-sm md:text-base text-foreground placeholder:text-muted-foreground focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed pl-6 pr-14 py-4 max-h-40 rounded-[2rem]"
       />
-      <div className="absolute right-2 bottom-2">
+      <div className="absolute right-2.5 bottom-3">
         <button
           onClick={onSend}
           disabled={disabled || !value.trim()}

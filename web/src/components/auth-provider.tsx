@@ -13,6 +13,8 @@ export interface User {
   plan_tier: PlanTier;
   credits_used: number;
   credits_limit: number;
+  created_at?: string;
+  onboarding_completed_at?: string;
 }
 
 interface AuthContextType {
@@ -29,7 +31,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);

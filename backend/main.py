@@ -5,7 +5,7 @@ from backend.config import settings
 from backend.api.routes import router
 from backend.chat.routes import chat_router
 from backend.api.company_routes import company_router
-
+from backend.api.onboarding_routes import router as onboarding_router
 from contextlib import asynccontextmanager
 
 # Configure logging
@@ -19,16 +19,19 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Start background tasks
-    from backend.tasks import run_watch_loop
+    from backend.tasks import run_watch_loop, run_connector_sync_loop
     import asyncio
     watch_task = asyncio.create_task(run_watch_loop())
+    sync_task = asyncio.create_task(run_connector_sync_loop())
     
     yield
     
     # Shutdown: Clean up background tasks
     watch_task.cancel()
+    sync_task.cancel()
     try:
         await watch_task
+        await sync_task
     except asyncio.CancelledError:
         pass
 
@@ -49,10 +52,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.api.actions_routes import router as actions_router
+
 # Include routes
 app.include_router(router)
 app.include_router(chat_router)
 app.include_router(company_router)
+app.include_router(onboarding_router)
+app.include_router(actions_router)
 
 if __name__ == "__main__":
     import uvicorn

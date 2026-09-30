@@ -2,14 +2,21 @@
 LangGraph graph definition for the chat pipeline.
 
 Graph shape:
-  START → detect_entity_node
-    ├─ company detected   → check_quota_node
-    │                           ├─ quota OK → [parallel fetch nodes] → format_company_profile → END
-    │                           └─ quota exceeded → quota_exceeded_node → END
-    ├─ no company, but active context → classify_followup_node
-    │                                     ├─ company_followup → company_synthesis_node → END
-    │                                     └─ other → generic_response_node → END
-    └─ no company, no context → generic_response_node → END
+  START → classify_thread_intent_node
+    ├─ passthrough → detect_entity_node
+    │   ├─ company detected   → check_quota_node
+    │   │                           ├─ quota OK → [parallel fetch nodes] → format_company_profile → END
+    │   │                           └─ quota exceeded → quota_exceeded_node → END
+    │   ├─ no company, but active context → classify_followup_node
+    │   │                                     ├─ company_followup → company_synthesis_node → END
+    │   │                                     └─ other → generic_response_node → END
+    │   └─ no company, no context → generic_response_node → END
+    ├─ daily_briefing → daily_briefing_node → END
+    ├─ interview_prep → interview_prep_node → END
+    ├─ stale_nudges → stale_nudges_node → END
+    ├─ skill_gap_pattern → skill_gap_pattern_node → END
+    ├─ apply_recommendation → apply_recommendation_node → END
+    └─ compound_query → compound_query_node → END
 """
 
 import logging
@@ -24,6 +31,15 @@ from backend.chat.nodes import (
 )
 from backend.chat.connectors.nodes import fetch_company_profile_node
 from backend.chat.connectors.schemas import CompanyProfile
+from backend.chat.intent_classifier import classify_thread_intent
+from backend.chat.synthesis_nodes import (
+    daily_briefing_node,
+    interview_prep_node,
+    stale_nudges_node,
+    skill_gap_pattern_node,
+    apply_recommendation_node,
+    compound_query_node,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +68,38 @@ class ChatPipelineState(TypedDict):
     # Company context follow-up
     active_company_context: Optional[dict]
     followup_classification: Optional[str]
+
+    # Thread-level intent routing (new)
+    thread_intent: Optional[str]
+    thread_intent_filters: Optional[dict]
+    thread_intent_company: Optional[str]
+    action_buttons: Optional[List[dict]]
+
+
+async def classify_thread_intent_node(state: ChatPipelineState) -> dict:
+    """Classify the user's message for thread-level synthesis intents.
+
+    Runs BEFORE entity detection. Returns 'passthrough' for anything that
+    should fall through to the existing flow.
+    """
+    result = await classify_thread_intent(
+        state["user_message"],
+        state.get("chat_history"),
+    )
+    update = {
+        "thread_intent": result.intent,
+        "thread_intent_filters": (
+            result.compound_filters.model_dump()
+            if result.compound_filters else None
+        ),
+        "thread_intent_company": result.interview_company,
+    }
+    logger.info(
+        f"Thread intent: {result.intent} "
+        f"for message: {state['user_message'][:60]!r}"
+    )
+    return update
+
 
 def detect_entity_node(state: ChatPipelineState) -> dict:
     result = detect_entity(state["user_message"])
@@ -88,6 +136,16 @@ async def check_quota_node(state: ChatPipelineState) -> dict:
         # Default to allow if DB fails so we don't break the app
         
     return {"quota_exceeded": False}
+
+
+def route_after_thread_intent(state: ChatPipelineState) -> str:
+    """Route based on thread-level intent classification."""
+    intent = state.get("thread_intent", "passthrough")
+    if intent == "passthrough":
+        return "detect_entity"
+    # All synthesis intents route to their handler node
+    return intent
+
 
 def route_after_detection(state: ChatPipelineState) -> str:
     """Route based on entity detection AND active company context."""
@@ -134,6 +192,10 @@ async def format_company_profile_node(state: ChatPipelineState) -> dict:
 def create_chat_graph():
     workflow = StateGraph(ChatPipelineState)
 
+    # Thread-level intent classification (new entry point)
+    workflow.add_node("classify_thread_intent", classify_thread_intent_node)
+
+    # Existing nodes
     workflow.add_node("detect_entity", detect_entity_node)
     workflow.add_node("generic_response", generic_response_node)
     workflow.add_node("check_quota", check_quota_node)
@@ -160,9 +222,34 @@ def create_chat_graph():
         
     workflow.add_node("too_many_entities", too_many_entities_node)
 
-    # Add edges
-    workflow.set_entry_point("detect_entity")
+    # Synthesis nodes (new)
+    workflow.add_node("daily_briefing", daily_briefing_node)
+    workflow.add_node("interview_prep", interview_prep_node)
+    workflow.add_node("stale_nudges", stale_nudges_node)
+    workflow.add_node("skill_gap_pattern", skill_gap_pattern_node)
+    workflow.add_node("apply_recommendation", apply_recommendation_node)
+    workflow.add_node("compound_query", compound_query_node)
 
+    # ── Edges ────────────────────────────────────────────
+
+    # New entry point: thread-level intent classification
+    workflow.set_entry_point("classify_thread_intent")
+
+    workflow.add_conditional_edges(
+        "classify_thread_intent",
+        route_after_thread_intent,
+        {
+            "detect_entity": "detect_entity",
+            "daily_briefing": "daily_briefing",
+            "interview_prep": "interview_prep",
+            "stale_nudges": "stale_nudges",
+            "skill_gap_pattern": "skill_gap_pattern",
+            "apply_recommendation": "apply_recommendation",
+            "compound_query": "compound_query",
+        }
+    )
+
+    # Existing detection routing (unchanged)
     workflow.add_conditional_edges(
         "detect_entity",
         route_after_detection,
@@ -194,10 +281,19 @@ def create_chat_graph():
     workflow.add_edge("fetch_company_profile", "evaluate_job_fit")
     workflow.add_edge("evaluate_job_fit", "format_company_profile")
 
+    # Terminal edges
     workflow.add_edge("format_company_profile", END)
     workflow.add_edge("generic_response", END)
     workflow.add_edge("quota_exceeded", END)
     workflow.add_edge("company_synthesis", END)
+
+    # Synthesis node terminal edges (new)
+    workflow.add_edge("daily_briefing", END)
+    workflow.add_edge("interview_prep", END)
+    workflow.add_edge("stale_nudges", END)
+    workflow.add_edge("skill_gap_pattern", END)
+    workflow.add_edge("apply_recommendation", END)
+    workflow.add_edge("compound_query", END)
 
     return workflow.compile()
 

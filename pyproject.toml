@@ -24,6 +24,7 @@ dependencies = [
     "google-genai>=2.17.0",
     "supabase>=2.31.0",
     "stripe>=15.5.0",
+    "cryptography>=50.0.0",
 ]
 
 [project.optional-dependencies]
@@ -45,3 +46,6 @@ select = ["E", "F", "I", "N", "W", "UP"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "live: tests that call real LLM APIs (deselect with '-m \"not live\"')",
+]

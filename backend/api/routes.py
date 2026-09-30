@@ -34,25 +34,44 @@ async def get_current_user_id(authorization: str = Header(None)) -> str:
     token = authorization.split(" ", 1)[1]
 
     try:
-        sb = get_supabase()
-        # Instead of verifying the token locally (which fails on ES256 algorithms),
-        # we ask the Supabase Auth server to verify the token and return the user.
-        # This is more secure anyway, as it checks if the token was revoked!
-        res = sb.auth.get_user(token)
-        if not res or not res.user:
-            raise HTTPException(status_code=401, detail="Invalid token")
-        return res.user.id
+        # Instead of using sb.auth.get_user(token) which attempts buggy local PyJWT verification
+        # for ES256 tokens, we hit the Supabase Auth REST endpoint directly.
+        import httpx
+        url = f"{settings.supabase_url}/auth/v1/user"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "apikey": settings.supabase_anon_key
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(url, headers=headers)
+            
+        if resp.status_code != 200:
+            logger.error(f"[Auth] get_user REST call failed: {resp.status_code} {resp.text}")
+            raise HTTPException(status_code=401, detail=f"Supabase Auth rejected token: {resp.status_code} {resp.text}")
+            
+        user_data = resp.json()
+        if not user_data or "id" not in user_data:
+            logger.error(f"[Auth] get_user returned empty for token {token[:10]}...")
+            raise HTTPException(status_code=401, detail=f"Supabase Auth returned empty user object: {resp.text}")
+            
+        return user_data["id"]
     except HTTPException:
         raise
     except Exception as e:
-        logger.debug(f"Auth token validation failed: {e}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        logger.error(f"[Auth] Auth token validation failed for token {token[:10]}... Error: {str(e)}")
+        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {str(e)}")
 
 
 # ── Request models ───────────────────────────────────────
 
 class ParseTextRequest(BaseModel):
     raw_text: str
+
+class FitScoreRequest(BaseModel):
+    base_resume_id: str
+    jd_text: str
+    company: Optional[str] = None
+    role: Optional[str] = None
 
 class CheckoutSessionRequest(BaseModel):
     plan_tier: str
@@ -198,12 +217,19 @@ async def run_tailor_pipeline(input_data: PipelineInput, user_id: str = Depends(
     if not resume_text:
         raise HTTPException(status_code=400, detail="Must provide resume_text or base_resume_id")
 
-    # 3. Invoke LangGraph pipeline
+    # 3. Fetch GitHub Signal
+    github_signal = None
+    github_resp = sb.table("base_resumes").select("raw_text").eq("user_id", user_id).eq("label", "GitHub Profile").execute()
+    if github_resp.data:
+        github_signal = github_resp.data[0]["raw_text"]
+
+    # 4. Invoke LangGraph pipeline
     initial_state = {
         "raw_jd": jd_text,
         "raw_resume": resume_text,
         "tone": "professional",
         "missing_requirements": input_data.missing_requirements,
+        "github_signal": github_signal,
         "errors": []
     }
 
@@ -240,6 +266,46 @@ async def run_tailor_pipeline(input_data: PipelineInput, user_id: str = Depends(
         logger.warning(f"Pipeline execution failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/api/fit-score")
+async def get_fit_score(request: FitScoreRequest, user_id: str = Depends(get_current_user_id)):
+    """Fast endpoint just to score the fit between a resume and JD."""
+    sb = get_supabase()
+    resume_resp = sb.table("base_resumes").select("parsed_json").eq("id", request.base_resume_id).eq("user_id", user_id).single().execute()
+    if not resume_resp.data or not resume_resp.data.get("parsed_json"):
+        raise HTTPException(status_code=400, detail="Resume not found or not parsed")
+    
+    parsed_resume = resume_resp.data["parsed_json"]
+    
+    try:
+        from backend.services.llm import llm_service
+        from pydantic import BaseModel
+        
+        class FitScoreResponse(BaseModel):
+            fit_score: int
+            fit_label: str
+            analysis: str
+            
+        prompt = f"""
+        Analyze the fit between this candidate's resume and the job description.
+        Job Title: {request.role or 'Unknown'}
+        Company: {request.company or 'Unknown'}
+        
+        Job Description:
+        {request.jd_text}
+        
+        Candidate Resume (JSON):
+        {parsed_resume}
+        """
+        
+        result = await llm_service.generate_structured(
+            system_msg="You are an expert technical recruiter. Score the candidate's fit out of 100. Provide a short 2-sentence analysis and a label (e.g. 'Strong Fit', 'Reach', 'Mismatch').",
+            prompt=prompt,
+            response_model=FitScoreResponse
+        )
+        return result.model_dump()
+    except Exception as e:
+        logger.error(f"Fit score failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ── User Profile ─────────────────────────────────────────
 
@@ -330,11 +396,19 @@ async def save_resume(request: SaveResumeRequest, user_id: str = Depends(get_cur
     try:
         from backend.pipeline.nodes.parse_resume import parse_resume_node
         parse_result = await parse_resume_node({"raw_resume": request.raw_text})
+        
+        if "errors" in parse_result and parse_result["errors"]:
+            raise ValueError(" | ".join(parse_result["errors"]))
+            
         parsed_resume = parse_result.get("parsed_resume")
         parsed_json = parsed_resume.model_dump() if parsed_resume else None
+        confidence = parse_result.get("parse_confidence", "high")
+        warnings = parse_result.get("parse_warnings", [])
     except Exception as e:
         logger.error(f"Failed to parse resume on upload: {e}")
         parsed_json = None
+        confidence = "low"
+        warnings = [str(e)]
         
     resp = sb.table("base_resumes").insert({
         "user_id": user_id,
@@ -342,7 +416,11 @@ async def save_resume(request: SaveResumeRequest, user_id: str = Depends(get_cur
         "raw_text": request.raw_text,
         "parsed_json": parsed_json
     }).execute()
-    return resp.data[0] if resp.data else {}
+    
+    result = resp.data[0] if resp.data else {}
+    result["parse_confidence"] = confidence
+    result["parse_warnings"] = warnings
+    return result
 
 @router.delete("/api/resume/{resume_id}")
 async def delete_resume(resume_id: str, user_id: str = Depends(get_current_user_id)):
@@ -351,6 +429,50 @@ async def delete_resume(resume_id: str, user_id: str = Depends(get_current_user_
     if not resp.data:
         raise HTTPException(status_code=404, detail="Resume not found")
     return {"success": True}
+
+@router.post("/api/resume/{resume_id}/reparse")
+async def reparse_resume(resume_id: str, user_id: str = Depends(get_current_user_id)):
+    """Re-run the extraction on the saved raw_text to generate a fresh parsed_json."""
+    sb = get_supabase()
+    
+    # 1. Fetch the existing resume
+    resp = sb.table("base_resumes").select("raw_text").eq("id", resume_id).eq("user_id", user_id).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Resume not found")
+        
+    raw_text = resp.data[0].get("raw_text", "")
+    if not raw_text:
+        raise HTTPException(status_code=400, detail="Resume has no raw text to re-parse")
+        
+    # 2. Re-parse using the node
+    try:
+        from backend.pipeline.nodes.parse_resume import parse_resume_node
+        parse_result = await parse_resume_node({"raw_resume": raw_text})
+        
+        if "errors" in parse_result and parse_result["errors"]:
+            raise ValueError(" | ".join(parse_result["errors"]))
+            
+        parsed_resume = parse_result.get("parsed_resume")
+        parsed_json = parsed_resume.model_dump() if parsed_resume else None
+        
+        confidence = parse_result.get("parse_confidence", "high")
+        warnings = parse_result.get("parse_warnings", [])
+        
+    except Exception as e:
+        logger.error(f"Failed to re-parse resume {resume_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Parse error: {e}")
+        
+    # 3. Update the database
+    update_resp = sb.table("base_resumes").update({
+        "parsed_json": parsed_json
+    }).eq("id", resume_id).eq("user_id", user_id).execute()
+    
+    return {
+        "success": True, 
+        "resume": update_resp.data[0] if update_resp.data else {},
+        "confidence": confidence,
+        "warnings": warnings
+    }
 
 
 # ── Applications Tracker CRUD ────────────────────────────

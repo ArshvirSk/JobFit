@@ -47,6 +47,7 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
   // Panel state
   const [activeCompanySlugs, setActiveCompanySlugs] = useState<string[]>([]);
   const [notifications, setNotifications] = useState<any[]>([]);
+  const [detectedEvents, setDetectedEvents] = useState<any[]>([]);
 
   // Resize state
   const [chatWidth, setChatWidth] = useState(40);
@@ -87,7 +88,16 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
         console.error("Failed to fetch notifications", e);
       }
     };
+    const fetchEvents = async () => {
+      try {
+        const res = await api.getDetectedEvents();
+        setDetectedEvents(res.data || []);
+      } catch (e) {
+        console.error("Failed to fetch detected events", e);
+      }
+    };
     fetchNotifs();
+    fetchEvents();
   }, []);
 
   const dismissNotification = async (notifId: string) => {
@@ -96,6 +106,26 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
       await api.markNotificationRead(notifId);
     } catch (e) {
       console.error("Failed to mark read", e);
+    }
+  };
+
+  const dismissEvent = async (eventId: string) => {
+    setDetectedEvents(prev => prev.filter(e => e.id !== eventId));
+    try {
+      await api.dismissDetectedEvent(eventId);
+    } catch (e) {
+      console.error("Failed to dismiss event", e);
+    }
+  };
+
+  const confirmEvent = async (eventId: string) => {
+    setDetectedEvents(prev => prev.filter(e => e.id !== eventId));
+    try {
+      await api.confirmDetectedEvent(eventId);
+      toast.success("Event confirmed and added to tracker");
+    } catch (e) {
+      console.error("Failed to confirm event", e);
+      toast.error("Failed to confirm event");
     }
   };
 
@@ -120,6 +150,10 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
     }
     router.push(targetUrl);
   }, [router]);
+
+  const handleTailorFromAction = useCallback((url: string, gaps?: string[]) => {
+    handleTailorJob(url, gaps);
+  }, [handleTailorJob]);
 
   // Input state
   const [inputValue, setInputValue] = useState("");
@@ -287,6 +321,16 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
     }
   }, [inputValue, isStreaming, currentThreadId, addThreadToList, updateThreadInList, threads]);
 
+  const handleDraftFollowUp = useCallback((payload: { company: string; role: string; application_id?: string; days_since?: number }) => {
+    // Trigger a chat message asking the LLM to draft a follow-up email with context pre-filled
+    const prompt = `Draft a follow-up email for my application to ${payload.company} for the ${payload.role} role. It's been ${payload.days_since || 14} days since I last heard back.`;
+    setInputValue(prompt);
+    // Use handleSend after state update
+    setTimeout(() => {
+      handleSend(prompt);
+    }, 50);
+  }, [handleSend]);
+
   const handleRetry = useCallback((messageId: string) => {
     const assistantIndex = messages.findIndex(m => m.id === messageId);
     if (assistantIndex <= 0) return;
@@ -450,6 +494,35 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
           </div>
         )}
 
+        {detectedEvents.length > 0 && (
+          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 rounded-lg shadow-lg p-3 flex items-start gap-3 animate-in slide-in-from-top-4">
+            <Bell className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="text-sm font-semibold text-emerald-900 dark:text-emerald-100">
+                {detectedEvents[0].event_type === "email_application_status" ? "Application Status Detected" : "Upcoming Interview Detected"}
+              </h4>
+              <p className="text-xs text-emerald-700 dark:text-emerald-300 mt-1 leading-snug">
+                {detectedEvents[0].event_type === "email_application_status" ? (
+                  <>Did you receive a <strong>{detectedEvents[0].event_data.status}</strong> status from <strong>{detectedEvents[0].company_name}</strong>?</>
+                ) : (
+                  <>You have an upcoming interview with <strong>{detectedEvents[0].company_name || 'a company'}</strong> ({new Date(detectedEvents[0].event_data.event_date).toLocaleString()}).</>
+                )}
+              </p>
+              <div className="flex gap-2 mt-2">
+                <Button variant="outline" size="sm" className="h-auto px-2 py-1 text-xs border-emerald-300 bg-white" onClick={() => confirmEvent(detectedEvents[0].id)}>
+                  Yes, add to tracker
+                </Button>
+                <Button variant="ghost" size="sm" className="h-auto px-2 py-1 text-xs text-emerald-700" onClick={() => dismissEvent(detectedEvents[0].id)}>
+                  No
+                </Button>
+              </div>
+            </div>
+            <button onClick={() => dismissEvent(detectedEvents[0].id)} className="text-emerald-500 hover:text-emerald-700">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         {messages.length === 0 && !isLoadingMessages && !isCreatingThread ? (
           <div className="flex-1 flex flex-col items-center justify-center p-4">
             <h2 className="text-3xl md:text-4xl font-semibold text-foreground mb-8 text-center">Who are you looking for?</h2>
@@ -472,6 +545,8 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
               onSuggestionClick={handleSuggestionClick}
               onOpenProfile={handleOpenProfile}
               onRetry={handleRetry}
+              onDraftFollowUp={handleDraftFollowUp}
+              onTailor={handleTailorFromAction}
             />
             <div className="p-4 shrink-0 bg-transparent">
               <div className="max-w-3xl mx-auto">

@@ -5,6 +5,24 @@ from backend.pipeline.prompts.resume_parse import RESUME_PARSE_SYSTEM, RESUME_PA
 
 logger = logging.getLogger(__name__)
 
+def validate_parsed_resume(parsed: ParsedResume, raw_text: str) -> dict:
+    warnings = []
+    confidence = "high"
+
+    if len(raw_text) < 200:
+        warnings.append("Extracted text is suspiciously short.")
+        confidence = "low"
+    
+    if not parsed.experience:
+        warnings.append("No work experience found.")
+        confidence = "low"
+        
+    if not parsed.skills:
+        warnings.append("No skills found.")
+        confidence = "low"
+
+    return {"confidence": confidence, "warnings": warnings}
+
 async def parse_resume_node(state: dict) -> dict:
     """Node: Parse raw resume text into structured JSON. Usually done before the main graph starts, but can be included."""
     logger.info("Running parse_resume_node")
@@ -20,7 +38,14 @@ async def parse_resume_node(state: dict) -> dict:
             prompt=prompt,
             response_model=ParsedResume
         )
-        return {"parsed_resume": parsed_resume}
+        
+        validation = validate_parsed_resume(parsed_resume, raw_resume_text)
+        
+        return {
+            "parsed_resume": parsed_resume,
+            "parse_confidence": validation["confidence"],
+            "parse_warnings": validation["warnings"]
+        }
     except Exception as e:
         logger.error(f"Error in parse_resume_node: {e}")
         return {"errors": state.get("errors", []) + [f"Resume Parse Error: {str(e)}"]}

@@ -3,8 +3,11 @@
   "name": "JobFit Copilot",
   "version": "1.0.0",
   "description": "Tailor your resume in seconds right from LinkedIn and Indeed.",
+  "side_panel": {
+    "default_path": "index.html"
+  },
   "action": {
-    "default_popup": "index.html"
+    "default_title": "Open JobFit Copilot"
   },
   "background": {
     "service_worker": "src/background/index.ts",
@@ -12,14 +15,18 @@
   },
   "content_scripts": [
     {
-      "matches": ["*://*.linkedin.com/jobs/*", "*://linkedin.com/jobs/*"],
+      "matches": ["*://*.linkedin.com/*", "*://linkedin.com/*"],
       "js": ["src/content/linkedin.ts"]
     },
     {
-      "matches": ["*://*.indeed.com/viewjob*", "*://indeed.com/viewjob*"],
+      "matches": ["*://*.indeed.com/*", "*://indeed.com/*"],
       "js": ["src/content/indeed.ts"]
+    },
+    {
+      "matches": ["http://localhost:3000/*", "http://127.0.0.1:3000/*"],
+      "js": ["src/content/jobfit.ts"]
     }
   ],
-  "permissions": ["activeTab", "storage"],
-  "host_permissions": ["*://*.linkedin.com/*", "*://*.indeed.com/*", "http://localhost:8000/*"]
+  "permissions": ["activeTab", "storage", "sidePanel", "cookies"],
+  "host_permissions": ["*://*.linkedin.com/*", "*://*.indeed.com/*", "http://localhost:8000/*", "http://localhost:3000/*"]
 }

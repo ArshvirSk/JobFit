@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, ExternalLink, Briefcase, DollarSign, Building2, TrendingUp, Users, Heart, X, Sparkles, Bell, BellRing, Code, Info, ListChecks, Globe } from "lucide-react";
+import { Loader2, ExternalLink, Briefcase, Banknote, Building2, TrendingUp, Users, Heart, X, Sparkles, Bell, BellRing, Code, Info, ListChecks, Globe } from "lucide-react";
 import { getAuthHeaders, API_BASE } from "@/lib/chat-api";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -44,6 +44,54 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
   const [priorApps, setPriorApps] = useState<any[]>([]);
   const [isWatched, setIsWatched] = useState(false);
   const [isTogglingWatch, setIsTogglingWatch] = useState(false);
+
+  const [githubMatch, setGithubMatch] = useState<any[]>([]);
+  const [githubLoading, setGithubLoading] = useState(true);
+  const [linkedinConnections, setLinkedinConnections] = useState<any[]>([]);
+  const [manualContacts, setManualContacts] = useState<any[]>([]);
+  const [linkedinLoading, setLinkedinLoading] = useState(true);
+  const [fallbackActions, setFallbackActions] = useState<any>(null);
+  const [outreachDraft, setOutreachDraft] = useState<string | null>(null);
+  const [generatingDraft, setGeneratingDraft] = useState(false);
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [newContact, setNewContact] = useState({ name: '', title: '', note: '', linkedin_url: '' });
+  const [savingContact, setSavingContact] = useState(false);
+  
+  // Project Ideas state
+  const [projectIdeas, setProjectIdeas] = useState<Record<string, any>>({});
+  const [generatingIdeas, setGeneratingIdeas] = useState<Record<string, boolean>>({});
+  
+  const fetchProjectIdea = async (jobHash: string, skillGap: string, jobTitle: string) => {
+    const key = `${jobHash}-${skillGap}`;
+    if (projectIdeas[key] || generatingIdeas[key]) return;
+    setGeneratingIdeas(prev => ({ ...prev, [key]: true }));
+    try {
+      const res = await api.generateProjectIdea(slug, jobHash, {
+        skill_gap: skillGap,
+        company_name: companyName,
+        job_title: jobTitle
+      });
+      const idea = await res.json();
+      setProjectIdeas(prev => ({ ...prev, [key]: idea }));
+    } catch (e) {
+      console.error("Failed to generate idea", e);
+    } finally {
+      setGeneratingIdeas(prev => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const updateIdeaStatus = async (jobHash: string, ideaId: string, status: string, skillGap: string) => {
+    const key = `${jobHash}-${skillGap}`;
+    try {
+      await api.updateProjectIdeaStatus(slug, jobHash, ideaId, status);
+      setProjectIdeas(prev => ({
+        ...prev,
+        [key]: { ...prev[key], status }
+      }));
+    } catch (e) {
+      console.error("Failed to update status", e);
+    }
+  };
   
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -75,9 +123,10 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         signal: abortControllerRef.current.signal
       });
       
-      console.log(`[CompanyPanel] Fetch response status: ${response.status}`);
+      const text = await response.text();
+      console.log(`[CompanyPanel] Fetch response status: ${response.status}, text: ${text}`);
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        throw new Error(`HTTP error! status: ${response.status}, text: ${text}`);
       }
       
       if (!response.body) throw new Error("No response body");
@@ -182,6 +231,37 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
     };
     fetchWatchStatus();
 
+    const fetchMatchData = async () => {
+      setGithubLoading(true);
+      setLinkedinLoading(true);
+      try {
+        api.getGithubMatch(slug).then(res => {
+          setGithubMatch(res.data.repos || []);
+          setGithubLoading(false);
+        }).catch(e => {
+          console.error("Failed to fetch GitHub match", e.response?.data || e.message || e);
+          setGithubLoading(false);
+        });
+
+        api.getLinkedinConnections(slug).then(res => {
+          setLinkedinConnections(res.data.connections || []);
+          if (res.data.fallback_actions) {
+            setFallbackActions(res.data.fallback_actions);
+          }
+          if (res.data.manual_contacts) {
+            setManualContacts(res.data.manual_contacts);
+          }
+          setLinkedinLoading(false);
+        }).catch(e => {
+          console.error("Failed to fetch LinkedIn connections", e.response?.data || e.message || e);
+          setLinkedinLoading(false);
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchMatchData();
+
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -204,6 +284,60 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
       alert(e.response?.data?.error || "Failed to toggle watch company");
     } finally {
       setIsTogglingWatch(false);
+    }
+  };
+
+  const handleGenerateDraft = async () => {
+    setGeneratingDraft(true);
+    
+    // Find best fit role if available
+    let bestFitRole = undefined;
+    if (data?.jobs?.length > 0) {
+      const sortedJobs = [...data.jobs].sort((a, b) => (b.fit_score?.score || 0) - (a.fit_score?.score || 0));
+      if (sortedJobs[0].fit_score?.score >= 60) {
+        bestFitRole = sortedJobs[0].title;
+      }
+    }
+    
+    // Find github match if available
+    let githubProject = undefined;
+    if (githubMatch && githubMatch.length > 0) {
+      githubProject = githubMatch[0].repo_name;
+    }
+    
+    try {
+      const res = await api.generateOutreachDraft(slug, bestFitRole, githubProject);
+      setOutreachDraft(res.data.draft);
+    } catch (e) {
+      console.error("Failed to generate outreach draft", e);
+    } finally {
+      setGeneratingDraft(false);
+    }
+  };
+
+  const handleAddManualContact = async () => {
+    if (!newContact.name) return;
+    setSavingContact(true);
+    try {
+      const res = await api.addManualContact(slug, newContact);
+      if (res.data) {
+        setManualContacts(prev => [...prev, res.data]);
+        setShowAddContact(false);
+        setNewContact({ name: '', title: '', note: '', linkedin_url: '' });
+      }
+    } catch (e) {
+      console.error("Failed to add manual contact", e);
+    } finally {
+      setSavingContact(false);
+    }
+  };
+
+  const handleDeleteManualContact = async (id: string) => {
+    try {
+      await api.deleteManualContact(slug, id);
+      setManualContacts(prev => prev.filter(c => c.id !== id));
+    } catch (e) {
+      console.error("Failed to delete manual contact", e);
     }
   };
 
@@ -386,7 +520,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2">
-                <DollarSign className="h-4 w-4 text-green-600" /> Compensation
+                <Banknote className="h-4 w-4 text-green-600" /> Compensation
               </span>
             </CardTitle>
           </CardHeader>
@@ -566,17 +700,34 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                         <p className="font-semibold text-foreground leading-tight">{job.title}</p>
                         <p className="text-xs text-muted-foreground mt-1">{job.location}</p>
                       </div>
-                      {job.fit_score && (
-                        <Badge variant={job.fit_score.fit_label === 'strong_match' ? 'default' : job.fit_score.fit_label === 'partial_match' ? 'secondary' : 'outline'}
-                          className={cn(
-                            "capitalize text-[10px] shrink-0",
-                            job.fit_score.fit_label === 'strong_match' ? "bg-green-100 text-green-800 hover:bg-green-100" :
-                            job.fit_score.fit_label === 'partial_match' ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100" :
-                            "bg-orange-50 text-orange-800 border-orange-200"
-                          )}>
-                          {job.fit_score.fit_label.replace('_', ' ')}
-                        </Badge>
-                      )}
+                      {job.fit_score && (() => {
+                        const matchedCount = job.fit_score.matched_requirements?.length || 0;
+                        const missingCount = job.fit_score.missing_requirements?.length || 0;
+                        const totalCount = matchedCount + missingCount;
+                        const matchPercentage = totalCount > 0 ? Math.round((matchedCount / totalCount) * 100) : 0;
+                        
+                        return (
+                          <div className="flex flex-col items-end gap-1.5">
+                            <Badge variant={job.fit_score.fit_label === 'strong_match' ? 'default' : job.fit_score.fit_label === 'partial_match' ? 'secondary' : 'outline'}
+                              className={cn(
+                                "capitalize text-[10px] shrink-0",
+                                job.fit_score.fit_label === 'strong_match' ? "bg-green-100 text-green-800 hover:bg-green-100" :
+                                job.fit_score.fit_label === 'partial_match' ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100" :
+                                "bg-orange-50 text-orange-800 border-orange-200"
+                              )}>
+                              {job.fit_score.fit_label.replace('_', ' ')}
+                            </Badge>
+                            {totalCount > 0 && (
+                              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground" title="Based on your resume and GitHub activity">
+                                <div className="w-12 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                                  <div className="h-full bg-blue-600 rounded-full transition-all" style={{ width: `${matchPercentage}%` }} />
+                                </div>
+                                <span className="font-medium whitespace-nowrap">{matchPercentage}% Match</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     
                     {job.fit_score && (
@@ -589,9 +740,84 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                           </div>
                         )}
                         {job.fit_score.missing_requirements?.length > 0 && (
-                          <div className="flex items-start gap-1.5 mt-1 text-muted-foreground">
-                            <span className="text-orange-500 font-bold shrink-0">!</span>
-                            <span className="line-clamp-2">Missing: {job.fit_score.missing_requirements.join(', ')}</span>
+                          <div className="flex flex-col gap-1.5 mt-2">
+                            {job.fit_score.missing_requirements.map((req: string, i: number) => {
+                              const ideaKey = `${job.job_hash}-${req}`;
+                              const idea = projectIdeas[ideaKey];
+                              const isGenerating = generatingIdeas[ideaKey];
+                              
+                              return (
+                                <div key={i} className="flex flex-col gap-1">
+                                  <div className="flex items-start gap-1.5 text-muted-foreground">
+                                    <span className="text-orange-500 font-bold shrink-0 mt-0.5">!</span>
+                                    <span className="text-xs flex-1">Missing: {req}</span>
+                                  </div>
+                                  
+                                  {!idea && !isGenerating && job.job_hash && (
+                                    <div className="ml-4 mt-0.5">
+                                      <button 
+                                        onClick={() => fetchProjectIdea(job.job_hash, req, job.title)}
+                                        className="text-[10px] text-blue-600 hover:text-blue-700 flex items-center gap-1 font-medium bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded transition-colors"
+                                      >
+                                        <Sparkles className="w-3 h-3" />
+                                        Project idea to close this gap
+                                      </button>
+                                    </div>
+                                  )}
+                                  
+                                  {isGenerating && (
+                                    <div className="ml-4 mt-1 flex items-center gap-2 text-[10px] text-muted-foreground">
+                                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                                      Generating tailored project idea...
+                                    </div>
+                                  )}
+                                  
+                                  {idea && (
+                                    <div className="ml-4 mt-1.5 bg-white dark:bg-slate-900 border border-border rounded-md p-2.5 shadow-sm">
+                                      <div className="flex justify-between items-start gap-2 mb-1.5">
+                                        <h4 className="font-semibold text-foreground text-xs">{idea.project_title}</h4>
+                                        <div className="flex items-center gap-1 text-[9px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-muted-foreground whitespace-nowrap">
+                                          <Briefcase className="w-2.5 h-2.5" />
+                                          {idea.estimated_time}
+                                        </div>
+                                      </div>
+                                      <p className="text-[11px] text-muted-foreground leading-relaxed mb-2">
+                                        {idea.project_description}
+                                      </p>
+                                      <div className="space-y-1.5 mb-3">
+                                        <div className="flex items-start gap-1.5 text-[10px]">
+                                          <span className="text-green-600 font-medium shrink-0 mt-0.5">Why:</span>
+                                          <span className="text-muted-foreground leading-tight">{idea.why_this_helps}</span>
+                                        </div>
+                                        <div className="flex items-start gap-1.5 text-[10px]">
+                                          <span className="text-blue-600 font-medium shrink-0 mt-0.5">Stack:</span>
+                                          <span className="text-muted-foreground leading-tight">{idea.stretch_from_current_skills}</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 border-t pt-2 mt-2">
+                                        <span className="text-[10px] font-medium text-slate-500">Status:</span>
+                                        <div className="flex bg-slate-100 dark:bg-slate-800 rounded p-0.5">
+                                          {(['suggested', 'building', 'done'] as const).map(status => (
+                                            <button
+                                              key={status}
+                                              onClick={() => updateIdeaStatus(job.job_hash, idea.id, status, req)}
+                                              className={cn(
+                                                "px-2 py-0.5 text-[9px] rounded capitalize transition-colors font-medium",
+                                                idea.status === status 
+                                                  ? "bg-white dark:bg-slate-700 shadow-sm text-foreground" 
+                                                  : "text-muted-foreground hover:text-foreground"
+                                              )}
+                                            >
+                                              {status}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -626,6 +852,250 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
           </CardContent>
         </Card>
         
+        {/* Network & Code Matches */}
+        <Card className="shadow-none border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 overflow-hidden rounded-xl">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Users className="h-4 w-4 text-blue-600" /> Your Network at {companyName}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {linkedinLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-10 w-full rounded" />
+                <Skeleton className="h-10 w-full rounded" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {(linkedinConnections.length > 0 || manualContacts.length > 0) ? (
+                  <div className="space-y-2">
+                    {manualContacts.map((conn: any) => (
+                      <div key={conn.id} className="flex flex-col p-2 bg-white dark:bg-slate-950 border rounded text-sm relative group">
+                        <span className="font-medium text-foreground flex items-center justify-between">
+                          {conn.name}
+                          {conn.linkedin_url && (
+                            <a href={conn.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-muted-foreground text-xs">{conn.title || "Contact"}</span>
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">Added by you</Badge>
+                        </div>
+                        {conn.note && <p className="text-xs text-muted-foreground mt-1 italic">"{conn.note}"</p>}
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => handleDeleteManualContact(conn.id)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                    {linkedinConnections.map((conn: any, i: number) => (
+                      <div key={i} className="flex flex-col p-2 bg-white dark:bg-slate-950 border rounded text-sm">
+                        <span className="font-medium text-foreground flex items-center justify-between">
+                          {conn.name}
+                          {conn.url && (
+                            <a href={conn.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                              <ExternalLink className="h-3 w-3" />
+                            </a>
+                          )}
+                        </span>
+                        <span className="text-muted-foreground text-xs">{conn.position || conn.title}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : fallbackActions ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">No direct connections found at {companyName}. Here are some ways to build your network:</p>
+                    
+                    {fallbackActions.alumni_links && fallbackActions.alumni_links.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Alumni Network</h4>
+                        {fallbackActions.alumni_links.map((alumni: any, i: number) => (
+                          <a key={i} href={alumni.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-white dark:bg-slate-950 border rounded text-sm hover:border-blue-300 transition-colors">
+                            <span className="text-foreground">Find alumni from <span className="font-medium">{alumni.school}</span></span>
+                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {fallbackActions.adjacent_connections && fallbackActions.adjacent_connections.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sector Peers</h4>
+                        {fallbackActions.adjacent_connections.map((conn: any, i: number) => (
+                          <div key={i} className="flex flex-col p-2 bg-white dark:bg-slate-950 border rounded text-sm">
+                            <span className="font-medium text-foreground flex items-center justify-between">
+                              {conn.name}
+                              {conn.url && (
+                                <a href={conn.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                  <ExternalLink className="h-3 w-3" />
+                                </a>
+                              )}
+                            </span>
+                            <span className="text-muted-foreground text-xs">Works at competitor <span className="font-medium">{conn.company}</span></span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search LinkedIn</h4>
+                      <div className="flex gap-2">
+                        {fallbackActions.search_links?.people_search && (
+                          <a href={fallbackActions.search_links.people_search} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1 text-xs h-8")}>
+                            People Search
+                          </a>
+                        )}
+                        {fallbackActions.search_links?.second_degree && (
+                          <a href={fallbackActions.search_links.second_degree} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1 text-xs h-8")}>
+                            2nd Degree
+                          </a>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t">
+                      {!outreachDraft ? (
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground mb-2">Find someone using the links above, then use this to break the ice.</p>
+                          <Button 
+                            variant="default" 
+                            className="w-full text-xs h-8" 
+                            onClick={handleGenerateDraft}
+                            disabled={generatingDraft}
+                          >
+                            {generatingDraft ? <Loader2 className="h-3 w-3 mr-2 animate-spin" /> : null}
+                            Draft Outreach Message
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Draft Message</h4>
+                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => navigator.clipboard.writeText(outreachDraft)}>
+                              Copy
+                            </Button>
+                          </div>
+                          <p className="text-[10px] text-muted-foreground">Personalize the greeting with their name before sending on LinkedIn.</p>
+                          <textarea 
+                            value={outreachDraft} 
+                            onChange={(e) => setOutreachDraft(e.target.value)}
+                            className="w-full h-32 p-2 text-xs bg-white dark:bg-slate-950 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">No connections found at {companyName} in your LinkedIn export.</p>
+                )}
+
+                {/* Add Manual Contact */}
+                <div className="pt-3 border-t">
+                  {showAddContact ? (
+                    <div className="space-y-2 p-3 border rounded-md bg-slate-50 dark:bg-slate-900/50">
+                      <div className="flex justify-between items-center mb-1">
+                        <h4 className="text-xs font-semibold">Log a Contact</h4>
+                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setShowAddContact(false)}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <input 
+                        type="text" 
+                        placeholder="Name*" 
+                        value={newContact.name} 
+                        onChange={e => setNewContact({...newContact, name: e.target.value})}
+                        className="w-full h-8 px-2 text-xs border rounded bg-white dark:bg-slate-950"
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="Role / Title" 
+                        value={newContact.title} 
+                        onChange={e => setNewContact({...newContact, title: e.target.value})}
+                        className="w-full h-8 px-2 text-xs border rounded bg-white dark:bg-slate-950"
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="LinkedIn URL (optional)" 
+                        value={newContact.linkedin_url} 
+                        onChange={e => setNewContact({...newContact, linkedin_url: e.target.value})}
+                        className="w-full h-8 px-2 text-xs border rounded bg-white dark:bg-slate-950"
+                      />
+                      <input 
+                        type="text" 
+                        placeholder="Note (e.g. 'Met at alumni event')" 
+                        value={newContact.note} 
+                        onChange={e => setNewContact({...newContact, note: e.target.value})}
+                        className="w-full h-8 px-2 text-xs border rounded bg-white dark:bg-slate-950"
+                      />
+                      <div className="flex justify-end pt-1">
+                        <Button 
+                          size="sm" 
+                          className="h-7 text-xs bg-blue-600 hover:bg-blue-700" 
+                          disabled={!newContact.name || savingContact}
+                          onClick={handleAddManualContact}
+                        >
+                          {savingContact ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : null} Save Contact
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button variant="outline" size="sm" className="w-full h-8 text-xs border-dashed" onClick={() => setShowAddContact(true)}>
+                      + Add a contact
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-none border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 overflow-hidden rounded-xl">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <Code className="h-4 w-4 text-purple-600" /> Relevant GitHub Projects
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {githubLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-12 w-full rounded" />
+                <Skeleton className="h-12 w-full rounded" />
+              </div>
+            ) : githubMatch.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No projects explicitly matching {companyName}'s tech stack.</p>
+            ) : (
+              <div className="space-y-2">
+                {githubMatch.map((repo: any, i: number) => (
+                  <div key={i} className="flex flex-col p-2 bg-white dark:bg-slate-950 border rounded text-sm">
+                    <span className="font-medium text-foreground flex items-center justify-between">
+                      {repo.repo_name}
+                      {repo.repo_url && repo.repo_url !== "#" && (
+                        <a href={repo.repo_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </span>
+                    <span className="text-muted-foreground text-xs line-clamp-1">{repo.one_line_relevance}</span>
+                    {repo.matched_stack && repo.matched_stack.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {repo.matched_stack.map((stack: string, j: number) => (
+                          <span key={j} className="text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded w-fit">{stack}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Ratings & Links */}
         <Card className="shadow-none border border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/30 overflow-hidden rounded-xl">
           <CardHeader className="pb-3">

@@ -61,3 +61,35 @@ class PipelineOutput(BaseModel):
     skill_gaps: List[SkillGap]
     interview_questions: Optional[List[str]] = None
     ats_issues: Optional[List[str]] = None
+
+# --- Onboarding & Preferences Models ---
+
+class UserPreferences(BaseModel):
+    target_roles: Optional[List[str]] = None
+    seniority: Optional[str] = None
+    locations: Optional[List[str]] = None
+    work_mode: Optional[str] = None
+    target_sectors: Optional[List[str]] = None
+    stale_threshold_days: Optional[int] = 14
+
+class UserConnector(BaseModel):
+    id: str
+    provider: str
+    scopes_granted: List[str]
+    status: str
+    connected_at: str
+    last_synced_at: Optional[str] = None
+
+class CompleteOnboardingRequest(BaseModel):
+    preferences: UserPreferences
+    linkedin_url: Optional[str] = None
+
+class OAuthStartRequest(BaseModel):
+    provider: str
+    redirect_uri: str
+    extra_scopes: Optional[List[str]] = None
+
+class OAuthCallbackRequest(BaseModel):
+    provider: str
+    code: str
+    redirect_uri: str

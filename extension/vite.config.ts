@@ -14,7 +14,9 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL('./src', import.meta.url)),
+      "@": fileURLToPath(new URL('../web/src', import.meta.url)),
+      "next/navigation": fileURLToPath(new URL('./src/lib/next-navigation-mock.ts', import.meta.url))
     },
+    dedupe: ['react', 'react-dom']
   },
 })

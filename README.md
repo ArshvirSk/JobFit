@@ -1,139 +1,148 @@
-# JobFit: AI Job Application Copilot
+# JobFit — AI Job Application Copilot
 
-JobFit is a full-stack AI-powered application designed to help job seekers instantly tailor their resumes and cover letters for specific job descriptions. It integrates seamlessly with popular job boards like LinkedIn and Indeed via a Chrome Extension.
+Tailored resumes, cover letters, skill-gap analysis, and predicted interview questions — generated from your base resume and any job description, in seconds. Ships as a Chrome extension for LinkedIn/Indeed, a Next.js web dashboard, and a FastAPI AI backend.
 
-## 🚀 Features
+**Python · FastAPI · LangGraph · Gemini (structured output) · Supabase · Stripe**
 
-- **Chrome Extension:** Sits on job boards (LinkedIn, Indeed) and allows 1-click resume tailoring directly from the job posting.
-- **Web Application:** A central dashboard to manage base resumes, view tailored documents, and manage billing.
-- **AI-Powered Tailoring Engine:** Uses Google Gemini to rewrite resumes and generate cover letters, optimizing for ATS keywords while preserving the user's authentic experience without hallucinating skills.
-- **Auth & Database:** Integrated with Supabase Auth (JWTs) and PostgreSQL (with Row-Level Security).
-- **Billing Flow:** Enforces a multi-tier SaaS model (Free, Pro) with usage limits, powered by Stripe Checkout and Webhooks.
-- **Programmatic SEO:** Auto-generated landing pages targeting long-tail job keywords to drive organic traffic.
+---
 
-## 🛠 Tech Stack
+## What it does
 
-### Frontend (Web App & Extension UI)
-- **Framework:** [Next.js 14](https://nextjs.org/) (App Router) / React
-- **Styling:** Tailwind CSS, Radix UI, Shadcn UI
-- **Language:** TypeScript
-- **Extension Build:** Vite + CRXJS
+1. **Capture** — the Chrome extension ("JobFit Copilot") runs on LinkedIn/Indeed job pages, scrapes the JD, and sends it with your base resume to the backend.
+2. **Tailor** — a LangGraph pipeline parses the JD and resume, analyzes skill gaps, rewrites the resume for the role (without inventing anything), generates a matching cover letter, predicts likely interview questions, and runs an ATS-compatibility check.
+3. **Review** — the web dashboard lets you manage base resumes, review generated documents, chat with a company-intelligence assistant, and manage billing.
 
-### Backend (API & AI Pipeline)
-- **Framework:** [FastAPI](https://fastapi.tiangolo.com/) (Python)
-- **AI/LLM SDK:** `google-genai` (Gemini 2.0 Flash)
-- **Agent Orchestration:** LangGraph (Stateful pipeline for processing the resume + job description)
-- **Database & Auth:** Supabase Python SDK
-- **Billing:** Stripe Python SDK
-- **Dependency Management:** `uv`
+## Architecture
 
-## 🏗 Architecture
+```text
+Chrome Extension (Vite + CRXJS)
+        │  JD text + base resume
+        ▼
+FastAPI Backend ──── LangGraph tailoring DAG ──── Gemini 2.0 Flash
+        │               parse_resume → parse_jd            (structured JSON
+        │                    │ (parallel fan-out)           output against
+        │               ┌────┬────────┬─────────┬────────┐ Pydantic schemas,
+        │               ▼    ▼        ▼         ▼        ▼ with model
+        │          gap   tailor  cover    questions   ATS  fallback)
+        │          analysis       letter
+        │
+        ├── LangGraph chat agent (intent routing → connectors → synthesis)
+        ├── Supabase (Postgres + RLS, Auth, storage)
+        └── Stripe (checkout + webhooks, Free/Pro tiers)
+```
 
-The system consists of three main components communicating with each other:
+**Pipeline details** ([`backend/pipeline/graph.py`](backend/pipeline/graph.py)):
+- Conditional entry: resumes uploaded earlier are reused as parsed state; raw text triggers in-graph parsing.
+- **Parallel fan-out** after JD parsing — gap analysis, tailoring, cover letter, interview questions, and ATS check are independent nodes and execute concurrently.
+- Every LLM call goes through [`backend/services/llm.py`](backend/services/llm.py): JSON-mode generation constrained by a Pydantic `response_schema`, per-attempt **fallback model** (`LLM_FALLBACK_MODEL`, default `gemini-2.0-flash-lite`), and retry pairs.
 
-1. **Extension:** Injected into LinkedIn/Indeed. Scrapes the Job Description, reads the Base Resume from the local state/API, and sends it to the Backend.
-2. **Backend API:** Receives the JD and Base Resume. Runs it through a LangGraph pipeline that extracts ATS keywords, formats the resume to match the JD, and generates a tailored cover letter.
-3. **Web Dashboard:** The portal for users to upload their base resume, view generated documents, and manage their subscription.
+**The no-fabrication contract** is the core design constraint — a resume tool must never invent experience. It is enforced in layers:
+1. System-prompt rules ([`backend/pipeline/prompts/tailor.py`](backend/pipeline/prompts/tailor.py)) — only information from the input resume; reordering/rephrasing allowed; structure must be preserved; standard terminology surfacing (e.g. MLflow → "experiment tracking") is allowed, tool invention is not.
+2. Schema-constrained outputs — every node returns typed Pydantic models, never raw strings.
+3. **Automated evaluation** (below).
 
-## ⚙️ Local Development Setup
+## Evaluation
+
+The tailoring pipeline has a deterministic eval harness ([`tests/eval_metrics.py`](tests/eval_metrics.py), [`tests/golden/resume_jd_pairs.json`](tests/golden/resume_jd_pairs.json)) measuring:
+
+| Metric | What it catches |
+|---|---|
+| **Entity faithfulness** | Any skill/employer/institution in the output that doesn't exist in the input (fabrication) |
+| **JD keyword coverage** | Required skills + JD keywords missing from the tailored resume (ATS alignment) |
+| **Structure preservation** | Added/merged/dropped experience entries, padded or deleted bullets |
+
+Golden-set results (`python -m tests.eval_report`):
+
+| case | faithfulness | structure | coverage | latency |
+|------|-------------|-----------|----------|---------|
+| gold-001 (strong overlap) | 1.000 | 1.000 | 0.818 | ~21s |
+| gold-002 (mismatch — honesty case) | 1.000 | 1.000 | 0.111 (expected low) | ~18s |
+| gold-003 (ML overlap) | 1.000 | 1.000 | 0.800 | ~20s |
+
+Notes:
+- gold-002 pairs a frontend resume with a data-engineering JD. The correct behavior is **faithfulness = 1.0 with low coverage** — the model must reframe honestly instead of keyword-stuffing. The golden set encodes this via `expected_coverage_pass: false`.
+- The harness is deliberately heuristic and reference-based (no LLM judge): cheap, deterministic, CI-friendly, and strong against the worst failure mode (fabrication).
+- 12 offline unit tests pin the metrics themselves (a fabricating output must fail; an honest one must pass) — run with `pytest -m "not live"`. The `live` marker runs the real pipeline against the golden set (requires `GOOGLE_API_KEY`).
+
+## Tech stack
+
+| Layer | Tech |
+|---|---|
+| Backend | Python 3.11, FastAPI, Pydantic v2, uv |
+| AI orchestration | LangGraph (two state machines: tailoring DAG + chat agent) |
+| LLM | Google Gemini 2.0 Flash via `google-genai` (structured output, search grounding, fallback model) |
+| Database & Auth | Supabase (Postgres + Row-Level Security, JWT auth) |
+| Payments | Stripe Checkout + webhooks (Free / Pro tiers) |
+| Web | Next.js 14 (App Router), TypeScript, Tailwind, Radix/shadcn |
+| Extension | Vite + CRXJS (Manifest V3) |
+| Quality | pytest (13 offline tests + live eval), ruff |
+
+## Local development
 
 ### Prerequisites
-- Node.js (v18+)
-- Python (3.11+)
-- `uv` package manager
-- Stripe CLI
+- Node.js 18+ / Python 3.11+ / [uv](https://docs.astral.sh/uv/)
+- A Google AI Studio API key ([get one here](https://aistudio.google.com/apikey))
 
-### 1. Clone the repository
-```bash
-git clone <repo-url>
-cd JobFit
-```
+### 1. Backend
 
-### 2. Environment Variables
-Copy the example environment file and add your API keys:
 ```bash
-cp .env.example .env
-```
-Open `.env` and configure your keys for **Gemini, Supabase, and Stripe**.
-
-### 3. Start the Backend (FastAPI)
-Using `uv`, the dependencies will be automatically managed in the `.venv` folder.
-```bash
-# From the root directory
+cp .env.example .env          # fill in GOOGLE_API_KEY (+ Supabase/Stripe keys as needed)
+uv sync --extra dev
 uv run uvicorn backend.main:app --reload
 ```
-The backend will run on `http://localhost:8000`.
 
-### 4. Start the Web App (Next.js)
+The API serves on `http://localhost:8000` (`/health` for a smoke check).
+
+### 2. Web dashboard
+
 ```bash
 cd web
 npm install
+cp .env.local.example .env.local   # if present; otherwise see web/README
 npm run dev
 ```
-The web app will run on `http://localhost:3000`.
 
-### 5. Listen for Stripe Webhooks
-To test the payment flow locally, you must forward Stripe events to your local backend using the Stripe CLI:
-```bash
-stripe listen --forward-to http://localhost:8000/api/billing/webhook
-```
+### 3. Chrome extension
 
-### 6. Build and Load the Chrome Extension
 ```bash
 cd extension
 npm install
 npm run build
+# Chrome → chrome://extensions → Developer mode → "Load unpacked" → select extension/dist
 ```
-To load the extension into Chrome:
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable **Developer mode** in the top right.
-3. Click **Load unpacked** and select the `JobFit/extension/dist` folder.
 
-## 🧪 Testing the Pipeline
-Once the extension is loaded and both servers are running:
-1. Open a job posting on LinkedIn.
-2. Click the JobFit extension icon.
-3. Follow the authentication flow and hit "Tailor Resume".
-4. The extension will communicate with your local backend to generate the tailored documents!
+### 4. Run the evaluation harness
 
-## 💬 Chat Interface (Phase 1 — Stubbed)
-
-A Happenstance-style conversational interface at `/chat` for company research and career Q&A. Phase 1 uses mocked company data; real connectors will be wired in Phase 2.
-
-### Running the Chat Migration
-Before using the chat feature, run the SQL migration in the **Supabase SQL Editor**:
+```bash
+uv run pytest -m "not live"        # offline metric tests (no API needed)
+uv run --extra dev python -m tests.eval_report   # live golden-set eval (needs GOOGLE_API_KEY)
 ```
-File: backend/migrations/chat_migration.sql
+
+## Repository layout
+
+```text
+backend/
+  api/            # REST routes (pipeline, chat, onboarding, actions)
+  chat/           # LangGraph chat agent: intent routing, connectors, synthesis
+  pipeline/       # LangGraph tailoring DAG: nodes + prompts
+  parsers/        # PDF/DOCX/LinkedIn extraction
+  services/       # LLM service, Supabase, Stripe, OAuth, encryption, sync
+  models/         # Pydantic schemas (the contract between every node)
+  migrations/     # Supabase SQL migrations
+tests/
+  eval_metrics.py # Deterministic eval metrics (faithfulness, coverage, structure)
+  golden/         # Golden-set resume/JD pairs
+  eval_report.py  # Live eval report runner
+web/              # Next.js dashboard
+extension/        # Chrome extension
+docs/             # Additional documentation
 ```
-This creates `chat_threads` and `chat_messages` tables with RLS policies.
 
-### Entity Detection Heuristic
+## Status & honest limitations
 
-The current entity detection (`backend/chat/entity_detector.py`) uses a **simple regex/keyword-list approach**:
+- **Working:** end-to-end tailoring pipeline (extension → API → LangGraph → dashboard), chat agent with company intelligence, auth + billing flow, evaluation harness.
+- **Known gaps:** single LLM provider (Gemini) — the fallback is a second Gemini model, not a cross-provider switch; JD parsing quality depends on the source page's markup; the ATS check is heuristic; web tests are manual.
 
-1. **Curated list** (~60 companies): A hardcoded dictionary of well-known company names and aliases (e.g. "byju's", "byjus", "byju" all map to "BYJU'S"). Matches are case-insensitive with word-boundary regex.
-2. **Capitalized phrase fallback**: If no curated match is found, looks for capitalized multi-word phrases that aren't common English words (e.g. "Acme Corp") and treats them as possible entities.
+## License
 
-**To replace in Phase 2**: Swap the body of `detect_entity()` in `entity_detector.py` with a real NER model or LLM classifier call. Keep the return type as `EntityDetectionResult`. The routing logic in `graph.py` will not need to change.
-
-**Known gaps** (intentional for Phase 1):
-- No multi-entity disambiguation ("did you mean X or Y")
-- Single-word uncurated entities may not be detected (e.g. "Notion")
-- No acronym expansion (e.g. "FAANG" won't trigger individual companies)
-
-### Message Metadata
-Every assistant message stores metadata in the `chat_messages.metadata` JSONB column:
-```json
-{
-  "detected_entity": "Razorpay",       // or null
-  "response_type": "company_stub",     // or "generic"
-  "detection_method": "curated_list"   // or "capitalized_phrase" or "none"
-}
-```
-This enables Phase 3's company SPA to link back to the triggering message without schema migration.
-
-## 🛣 Roadmap
-Check out the [tracker.md](./tracker.md) and [PRD.md](./PRD.md) files for detailed breakdown of completed and upcoming phases. Next up is Beta Testing, Quality Benchmarking, and Analytics integration.
-
----
-*Built with ❤️ for job seekers.*
+MIT

@@ -21,6 +21,12 @@ async def tailor_resume_node(state: dict) -> dict:
     else:
         missing_section = ""
 
+    github_signal = state.get("github_signal")
+    if github_signal:
+        github_section = f"\nAdditional GitHub Signal (Can be woven into projects/skills if it fills a gap):\n{github_signal}\n"
+    else:
+        github_section = ""
+
     try:
         prompt = TAILOR_PROMPT.format(
             role=parsed_jd.role_title,
@@ -28,7 +34,8 @@ async def tailor_resume_node(state: dict) -> dict:
             responsibilities=", ".join(parsed_jd.responsibilities),
             keywords=", ".join(parsed_jd.keywords) if parsed_jd.keywords else "",
             missing_requirements_section=missing_section,
-            parsed_resume=parsed_resume.model_dump_json(indent=2)
+            parsed_resume=parsed_resume.model_dump_json(indent=2),
+            github_signal_section=github_section
         )
         
         tailored_resume = await llm_service.generate_structured(

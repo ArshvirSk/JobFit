@@ -225,6 +225,11 @@ async def send_message(
                 "company_data": {},
                 "active_company_context": active_ctx,
                 "followup_classification": None,
+                # Thread-level intent routing
+                "thread_intent": None,
+                "thread_intent_filters": None,
+                "thread_intent_company": None,
+                "action_buttons": None,
             }
 
             final_response = None
@@ -232,6 +237,8 @@ async def send_message(
             detected_entities = []
             detection_method = None
             final_company_data = None
+            action_metadata = None
+            action_buttons = None
             
             # Start streaming updates
             async for step in chat_pipeline.astream(pipeline_input, stream_mode="updates"):
@@ -268,6 +275,12 @@ async def send_message(
                         final_response = state_update["response_text"]
                         final_type = state_update.get("response_type", "generic")
                     
+                    if "action_metadata" in state_update:
+                        action_metadata = state_update["action_metadata"]
+                    
+                    if "action_buttons" in state_update and state_update["action_buttons"]:
+                        action_buttons = state_update["action_buttons"]
+                    
                     # Capture company_data for context saving
                     if state_update.get("company_data"):
                         final_company_data = state_update["company_data"]
@@ -302,6 +315,10 @@ async def send_message(
                 "response_type": final_type,
                 "detection_method": detection_method,
             }
+            if action_metadata:
+                metadata["action_metadata"] = action_metadata
+            if action_buttons:
+                metadata["action_buttons"] = action_buttons
 
             sb.table("chat_messages").insert({
                 "thread_id": thread_id,

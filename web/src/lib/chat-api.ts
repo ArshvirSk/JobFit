@@ -7,18 +7,31 @@
  */
 
 import { createClient } from "@/lib/supabase";
+import { extensionToken } from "@/lib/api";
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export async function getAuthHeaders(): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const rawToken = extensionToken || (typeof globalThis !== 'undefined' ? (globalThis as any).__jobfit_ext_token : null);
+  const token = (rawToken && rawToken !== "null" && rawToken !== "undefined") ? rawToken : null;
+  
+  console.log("[AuthDebug] extensionToken var:", !!extensionToken);
+  console.log("[AuthDebug] globalThis.__jobfit_ext_token:", !!(typeof globalThis !== 'undefined' ? (globalThis as any).__jobfit_ext_token : null));
+  console.log("[AuthDebug] final token:", token ? "Exists" : "NULL");
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+    return headers;
+  }
+
   const supabase = createClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
 
   if (session?.access_token) {
     headers["Authorization"] = `Bearer ${session.access_token}`;
@@ -50,7 +63,15 @@ export interface ChatMessage {
     response_type?: string | null;
     detection_method?: string | null;
     progress?: string[];
+    action_buttons?: ActionButton[] | null;
+    action_metadata?: Record<string, unknown> | null;
   };
+}
+
+export interface ActionButton {
+  label: string;
+  action_type: "email_draft" | "open_profile" | "view_project_idea" | "open_tailor";
+  payload: Record<string, unknown>;
 }
 
 export interface SSEEvent {
@@ -61,6 +82,8 @@ export interface SSEEvent {
     detected_entities?: string[] | null;
     response_type?: string | null;
     detection_method?: string | null;
+    action_buttons?: ActionButton[] | null;
+    action_metadata?: Record<string, unknown> | null;
   };
   error?: boolean;
 }

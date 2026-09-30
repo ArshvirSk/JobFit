@@ -1,8 +1,10 @@
 import logging
-from typing import Type, TypeVar, Any
-from pydantic import BaseModel
+from typing import Any, TypeVar
+
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
+
 from backend.config import settings
 
 logger = logging.getLogger(__name__)
@@ -14,36 +16,93 @@ class LLMService:
         # Initialize Google GenAI client with settings
         self.client = genai.Client(api_key=settings.google_api_key)
         self.model = settings.llm_model
+        # Fallback model used when the primary model errors or returns an
+        # unusable response. Kept in the same SDK so retries are cheap and
+        # the response contract (parsed Pydantic object) stays identical.
+        self.fallback_model = settings.llm_fallback_model
         self.temperature = settings.llm_temperature
         self.max_retries = settings.llm_max_retries
 
-    async def generate_structured(self, system_msg: str, prompt: str, response_model: Type[T]) -> T:
-        """Generate structured JSON output using Gemini API matching the Pydantic model."""
-        config = types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=response_model,
-            system_instruction=system_msg,
-            temperature=self.temperature,
+    # ------------------------------------------------------------------
+    # Low-level helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _make_config(
+        system_msg: str,
+        temperature: float,
+        response_model: type[BaseModel] | None = None,
+    ) -> types.GenerateContentConfig:
+        """Build a GenerateContentConfig; adds schema-constrained JSON mode when a
+        response model is supplied."""
+        config_kwargs: dict[str, Any] = {
+            "system_instruction": system_msg,
+            "temperature": temperature,
+        }
+        if response_model is not None:
+            config_kwargs["response_mime_type"] = "application/json"
+            config_kwargs["response_schema"] = response_model
+        return types.GenerateContentConfig(**config_kwargs)
+
+    async def _invoke(self, model_name: str, prompt: str, config: types.GenerateContentConfig):
+        """Single attempt against a named model. Raises on failure — callers own retries."""
+        return await self.client.aio.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config,
         )
-        
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def generate_structured(self, system_msg: str, prompt: str, response_model: type[T]) -> T:
+        """Generate structured JSON output using Gemini API matching the Pydantic model.
+
+        Failure policy per attempt:
+          1. try the primary model;
+          2. on any exception, try the fallback model once;
+          3. only if both fail, count the attempt and retry the pair,
+             up to ``max_retries`` total attempts.
+        This keeps a transient provider error (quota blip, 500, malformed
+        parse) from failing the whole pipeline when a second model can serve.
+        """
+        config = self._make_config(system_msg, self.temperature, response_model)
+        fallback_config = self._make_config(system_msg, self.temperature, response_model)
+
+        last_error: Exception | None = None
         for attempt in range(self.max_retries + 1):
             try:
-                response = await self.client.aio.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=config,
-                )
-                
+                response = await self._invoke(self.model, prompt, config)
                 return response.parsed
-                
-            except Exception as e:
-                logger.warning(f"LLM call failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}")
-                if attempt == self.max_retries:
-                    raise
-                    
-    async def generate_structured_with_search(self, system_msg: str, prompt: str, response_model: Type[T]) -> T:
+            except Exception as primary_error:
+                last_error = primary_error
+                logger.warning(
+                    "LLM call failed on primary model '%s' (attempt %d/%d): %s",
+                    self.model, attempt + 1, self.max_retries + 1, primary_error,
+                )
+
+            if self.fallback_model and self.fallback_model != self.model:
+                try:
+                    response = await self._invoke(self.fallback_model, prompt, fallback_config)
+                    logger.info("Fallback model '%s' served the request.", self.fallback_model)
+                    return response.parsed
+                except Exception as fallback_error:
+                    last_error = fallback_error
+                    logger.warning(
+                        "Fallback model '%s' also failed (attempt %d/%d): %s",
+                        self.fallback_model, attempt + 1, self.max_retries + 1, fallback_error,
+                    )
+
+        raise RuntimeError(
+            f"LLM generation failed after {self.max_retries + 1} attempt(s) "
+            f"on both '{self.model}' and '{self.fallback_model}'"
+        ) from last_error
+
+    async def generate_structured_with_search(self, system_msg: str, prompt: str, response_model: type[T]) -> T:
         """Generate structured JSON output using Gemini API with Google Search Grounding enabled."""
         import json
+
         from pydantic import ValidationError
 
         # We cannot use response_mime_type or response_schema with tools in the Developer API.
@@ -64,15 +123,11 @@ class LLMService:
             temperature=self.temperature,
             tools=[{"google_search": {}}],
         )
-        
+
         for attempt in range(self.max_retries + 1):
             try:
-                response = await self.client.aio.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=config,
-                )
-                
+                response = await self._invoke(self.model, prompt, config)
+
                 # Confirm search was actually used, not just permitted.
                 grounding = getattr(
                     getattr(response, "candidates", [None])[0], "grounding_metadata", None
@@ -82,7 +137,7 @@ class LLMService:
                         f"No grounding metadata returned for prompt (model may not have "
                         f"actually searched): {prompt[:80]}..."
                     )
-                
+
                 text = response.text.strip()
                 # Clean up potential markdown formatting
                 if text.startswith("```json"):
@@ -103,7 +158,7 @@ class LLMService:
                     )
                     if attempt == self.max_retries:
                         raise e
-                
+
             except Exception as e:
                 logger.warning(f"LLM search call failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}")
                 if attempt == self.max_retries:
@@ -115,17 +170,13 @@ class LLMService:
             system_instruction=system_msg,
             temperature=self.temperature,
         )
-        
+
         for attempt in range(self.max_retries + 1):
             try:
-                response = await self.client.aio.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=config,
-                )
-                
+                response = await self._invoke(self.model, prompt, config)
+
                 return response.text
-                
+
             except Exception as e:
                 logger.warning(f"LLM call failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}")
                 if attempt == self.max_retries:
