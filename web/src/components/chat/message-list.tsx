@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { MessageBubble } from "./message-bubble";
 import { TypingIndicator } from "./typing-indicator";
 import { EmptyState } from "./empty-state";
+import type { TraceStep } from "./thinking-trace";
 
 export interface DisplayMessage {
   id: string;
@@ -12,6 +13,7 @@ export interface DisplayMessage {
   isStreaming?: boolean;
   isError?: boolean;
   metadata?: any;
+  trace?: TraceStep[];
 }
 
 interface MessageListProps {
@@ -71,6 +73,7 @@ export function MessageList({
             isStreaming={msg.isStreaming}
             isError={msg.isError}
             metadata={msg.metadata}
+            trace={msg.trace}
             onOpenProfile={onOpenProfile}
             onRetry={onRetry && msg.isError ? () => onRetry(msg.id) : undefined}
             onDraftFollowUp={onDraftFollowUp}

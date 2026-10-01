@@ -6,10 +6,120 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, ExternalLink, Briefcase, Banknote, Building2, TrendingUp, Users, Heart, X, Sparkles, Bell, BellRing, Code, Info, ListChecks, Globe } from "lucide-react";
+import { Loader2, ExternalLink, Briefcase, Banknote, Building2, TrendingUp, Users, Heart, X, Sparkles, Bell, BellRing, Code, Info, ListChecks, Globe, GraduationCap, Search } from "lucide-react";
 import { getAuthHeaders, API_BASE } from "@/lib/chat-api";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+// ── Role-based interview prep fallback ──────────────────────────────
+// Generic practice questions shown ONLY when company-specific DSA research
+// came back empty but the company has open roles. Clearly tagged "role-based"
+// so they're never mistaken for company-reported questions.
+type PrepQuestion = { title: string; topic: string; difficulty: string };
+
+const ROLE_PREP_LIBRARY: Array<{ match: RegExp; questions: PrepQuestion[] }> = [
+  {
+    match: /data|etl|database|warehouse|analytics|\bbi\b|ssis|ssas/i,
+    questions: [
+      { title: "Design an idempotent ETL pipeline that can be safely re-run after a failure", topic: "Data pipelines", difficulty: "medium" },
+      { title: "Window functions vs GROUP BY — when do you reach for each?", topic: "SQL", difficulty: "medium" },
+      { title: "Explain slowly changing dimensions (SCD Type 2) with a concrete example", topic: "Data modelling", difficulty: "medium" },
+      { title: "Star schema vs snowflake schema — what are the trade-offs?", topic: "Data modelling", difficulty: "easy" },
+    ],
+  },
+  {
+    match: /full.?stack|front.?end|back.?end|react|node|javascript|typescript|\bweb\b/i,
+    questions: [
+      { title: "How do the event loop, microtasks and macrotasks interact?", topic: "JavaScript", difficulty: "medium" },
+      { title: "Render a table of 10,000 rows smoothly — what do you change?", topic: "Performance", difficulty: "medium" },
+      { title: "Design a REST API for the feature you're most proud of", topic: "API design", difficulty: "medium" },
+      { title: "How would you prevent XSS and CSRF in a typical web app?", topic: "Security", difficulty: "medium" },
+    ],
+  },
+  {
+    match: /mobile|android|ios|flutter|react[\s-]?native/i,
+    questions: [
+      { title: "Handle process death and configuration changes on Android", topic: "Android", difficulty: "medium" },
+      { title: "Design offline-first sync with conflict resolution", topic: "Mobile architecture", difficulty: "medium" },
+      { title: "How do you cut jank in a long scrollable list?", topic: "Performance", difficulty: "medium" },
+    ],
+  },
+  {
+    match: /architect/i,
+    questions: [
+      { title: "Design a rate limiter for a public API", topic: "System design", difficulty: "medium" },
+      { title: "How would you migrate a monolith to services without downtime?", topic: "System design", difficulty: "hard" },
+      { title: "Walk through the C4 model for a system you've built", topic: "Architecture", difficulty: "medium" },
+    ],
+  },
+];
+
+const DEFAULT_PREP_QUESTIONS: PrepQuestion[] = [
+  { title: "Tell a concise STAR story about a tough problem you solved", topic: "Behavioral", difficulty: "easy" },
+  { title: "Walk through your resume in 2 minutes — what do you emphasize?", topic: "Behavioral", difficulty: "easy" },
+  { title: "Reverse a linked list and analyze time/space complexity", topic: "DSA", difficulty: "easy" },
+  { title: "Explain a technical trade-off you made in a recent project", topic: "Technical deep-dive", difficulty: "medium" },
+];
+
+function prepForRoles(titles: string[]): PrepQuestion[] {
+  const pickedEntries: PrepQuestion[][] = [];
+  const seen = new Set<string>();
+  for (const title of titles) {
+    const entry = ROLE_PREP_LIBRARY.find((e) => e.match.test(title));
+    if (entry && !pickedEntries.includes(entry.questions)) {
+      pickedEntries.push(entry.questions);
+    }
+  }
+  if (pickedEntries.length === 0) pickedEntries.push(DEFAULT_PREP_QUESTIONS);
+
+  // Round-robin across matched roles so each role gets representation, cap at 6.
+  const result: PrepQuestion[] = [];
+  const maxLen = Math.max(...pickedEntries.map((qs) => qs.length));
+  for (let i = 0; i < maxLen && result.length < 6; i++) {
+    for (const qs of pickedEntries) {
+      const q = qs[i];
+      if (q && !seen.has(q.title)) {
+        seen.add(q.title);
+        result.push(q);
+      }
+    }
+  }
+  return result;
+}
+
+function RolePrepFallback({ titles }: { titles: string[] }) {
+  const questions = prepForRoles(titles);
+  const shownRoles = titles.slice(0, 3).join(", ") + (titles.length > 3 ? "…" : "");
+  return (
+    <div className="space-y-3 text-sm">
+      <p className="text-xs text-muted-foreground">
+        No company-specific questions surfaced for {shownRoles} — prep for these open roles instead:
+      </p>
+      <div className="space-y-2">
+        {questions.map((q, idx) => (
+          <div key={idx} className="flex items-start justify-between gap-2 p-2.5 rounded-md border border-border bg-muted/10 hover:bg-muted/30 transition-colors">
+            <div className="flex-1 min-w-0">
+              <span className="font-medium text-[13px] text-foreground">{q.title}</span>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={cn(
+                  "text-[10px] font-semibold uppercase tracking-wider",
+                  q.difficulty === "easy" ? "text-green-600" :
+                  q.difficulty === "medium" ? "text-yellow-600" :
+                  "text-red-600"
+                )}>
+                  {q.difficulty}
+                </span>
+                <span className="text-muted-foreground text-[10px]">•</span>
+                <span className="text-muted-foreground text-[10px]">{q.topic}</span>
+              </div>
+            </div>
+            <Badge variant="secondary" className="text-[9px] h-4 px-1.5 shrink-0 bg-muted text-muted-foreground">role-based</Badge>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 interface CompanyPanelProps {
   slug: string;
@@ -123,12 +233,14 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
         signal: abortControllerRef.current.signal
       });
       
-      const text = await response.text();
-      console.log(`[CompanyPanel] Fetch response status: ${response.status}, text: ${text}`);
+      console.log(`[CompanyPanel] Stream response status: ${response.status}`);
       if (!response.ok) {
+        // Only read the body on error — consuming it here would lock the
+        // SSE stream and make getReader() below throw.
+        const text = await response.text().catch(() => "");
         throw new Error(`HTTP error! status: ${response.status}, text: ${text}`);
       }
-      
+
       if (!response.body) throw new Error("No response body");
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -613,9 +725,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                 <Skeleton className="h-6 w-3/4" />
                 <Skeleton className="h-10 w-full" />
               </div>
-            ) : data.dsa === null ? (
-              <p className="text-sm text-muted-foreground italic">No interview prep data found.</p>
-            ) : (
+            ) : data.dsa && ((data.dsa.topics_frequency?.length || 0) > 0 || (data.dsa.reported_questions?.length || 0) > 0) ? (
               <div className="space-y-4 text-sm">
                 <div>
                   <p className="text-muted-foreground text-xs uppercase tracking-wider mb-2">Commonly Tested Topics</p>
@@ -632,7 +742,7 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                   )}
                 </div>
 
-                {data.dsa.confidence === 'verified_links' && data.dsa.reported_questions && data.dsa.reported_questions.length > 0 ? (
+                {data.dsa.reported_questions && data.dsa.reported_questions.length > 0 ? (
                   <div className="border-t pt-3">
                     <p className="text-muted-foreground text-xs uppercase tracking-wider mb-3">Recently Reported Questions</p>
                     <div className="space-y-2">
@@ -667,6 +777,15 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                   </div>
                 ) : null}
               </div>
+            ) : data.jobs === undefined ? (
+              <div className="space-y-3">
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-10 w-full" />
+              </div>
+            ) : (data.jobs?.open_roles?.length || 0) > 0 ? (
+              <RolePrepFallback titles={data.jobs.open_roles.map((j: any) => j.title)} />
+            ) : (
+              <p className="text-sm text-muted-foreground italic">No interview prep data found.</p>
             )}
           </CardContent>
         </Card>
@@ -824,25 +943,23 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                     )}
                     
                     <div className="flex gap-2 w-full mt-1">
+                      <a 
+                        href={job.url || `https://www.linkedin.com/jobs/search/?keywords=${encodeURIComponent(`${job.title} ${companyName} jobs`)}`}
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8 text-xs shrink-0", job.url ? "w-28" : "flex-1")}
+                      >
+                        View <ExternalLink className="ml-1.5 h-3 w-3" />
+                      </a>
                       {job.url && (
-                        <>
-                          <a 
-                            href={job.url} 
-                            target="_blank" 
-                            rel="noopener noreferrer" 
-                            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "w-28 h-8 text-xs shrink-0")}
-                          >
-                            View <ExternalLink className="ml-1.5 h-3 w-3" />
-                          </a>
-                          <Button variant="default" size="sm" className="flex-1 h-8 text-xs bg-blue-600 hover:bg-blue-700" 
-                            onClick={() => onTailorJob(
-                              job.url, 
-                              job.fit_score?.missing_requirements,
-                              { company: companyName, role: job.title, fitLabel: job.fit_score?.fit_label }
-                            )}>
-                            Tailor
-                          </Button>
-                        </>
+                        <Button variant="default" size="sm" className="flex-1 h-8 text-xs bg-blue-600 hover:bg-blue-700" 
+                          onClick={() => onTailorJob(
+                            job.url, 
+                            job.fit_score?.missing_requirements,
+                            { company: companyName, role: job.title, fitLabel: job.fit_score?.fit_label }
+                          )}>
+                          Tailor
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -915,49 +1032,80 @@ export function CompanyPanel({ slug, onClose, onTailorJob, onOpenProfile }: Comp
                     {fallbackActions.alumni_links && fallbackActions.alumni_links.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Alumni Network</h4>
-                        {fallbackActions.alumni_links.map((alumni: any, i: number) => (
-                          <a key={i} href={alumni.url} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-2 bg-white dark:bg-slate-950 border rounded text-sm hover:border-blue-300 transition-colors">
-                            <span className="text-foreground">Find alumni from <span className="font-medium">{alumni.school}</span></span>
-                            <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                          </a>
-                        ))}
+                        <div className="space-y-2">
+                          {fallbackActions.alumni_links.map((alumni: any, i: number) => (
+                            <a key={i} href={alumni.url} target="_blank" rel="noopener noreferrer" className="group flex items-center gap-3 p-2 bg-white dark:bg-slate-950 border rounded text-sm hover:border-blue-300 transition-colors">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                                <GraduationCap className="h-4 w-4" />
+                              </span>
+                              <span className="flex flex-col min-w-0 flex-1">
+                                <span className="font-medium text-foreground truncate">{alumni.school}</span>
+                                <span className="text-xs text-muted-foreground">Search LinkedIn alumni</span>
+                              </span>
+                              <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-blue-600" />
+                            </a>
+                          ))}
+                        </div>
                       </div>
                     )}
                     
                     {fallbackActions.adjacent_connections && fallbackActions.adjacent_connections.length > 0 && (
                       <div className="space-y-2">
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Sector Peers</h4>
-                        {fallbackActions.adjacent_connections.map((conn: any, i: number) => (
-                          <div key={i} className="flex flex-col p-2 bg-white dark:bg-slate-950 border rounded text-sm">
-                            <span className="font-medium text-foreground flex items-center justify-between">
-                              {conn.name}
-                              {conn.url && (
-                                <a href={conn.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                  <ExternalLink className="h-3 w-3" />
-                                </a>
-                              )}
-                            </span>
-                            <span className="text-muted-foreground text-xs">Works at competitor <span className="font-medium">{conn.company}</span></span>
-                          </div>
-                        ))}
+                        <div className="space-y-2">
+                          {fallbackActions.adjacent_connections.map((conn: any, i: number) => (
+                            <div key={i} className="flex flex-col p-2 bg-white dark:bg-slate-950 border rounded text-sm">
+                              <span className="font-medium text-foreground flex items-center justify-between">
+                                {conn.name}
+                                {conn.url && (
+                                  <a href={conn.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                    <ExternalLink className="h-3 w-3" />
+                                  </a>
+                                )}
+                              </span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-muted-foreground text-xs">Works at <span className="font-medium">{conn.company}</span></span>
+                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">sector_peer</Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
-                    <div className="space-y-2">
-                      <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search LinkedIn</h4>
-                      <div className="flex gap-2">
-                        {fallbackActions.search_links?.people_search && (
-                          <a href={fallbackActions.search_links.people_search} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1 text-xs h-8")}>
-                            People Search
-                          </a>
-                        )}
-                        {fallbackActions.search_links?.second_degree && (
-                          <a href={fallbackActions.search_links.second_degree} target="_blank" rel="noopener noreferrer" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "flex-1 text-xs h-8")}>
-                            2nd Degree
-                          </a>
-                        )}
+                    {(fallbackActions.search_links?.people_search || fallbackActions.search_links?.second_degree) && (
+                      <div className="space-y-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Search LinkedIn</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {fallbackActions.search_links?.people_search && (
+                            <a href={fallbackActions.search_links.people_search} target="_blank" rel="noopener noreferrer" className="group flex items-start gap-3 p-2 bg-white dark:bg-slate-950 border rounded text-sm hover:border-blue-300 transition-colors">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                <Search className="h-4 w-4" />
+                              </span>
+                              <span className="flex flex-col min-w-0">
+                                <span className="font-medium text-foreground flex items-center gap-1">
+                                  People Search <ExternalLink className="h-3 w-3 text-muted-foreground group-hover:text-blue-600" />
+                                </span>
+                                <span className="text-xs text-muted-foreground">Search LinkedIn's people directory for {companyName}</span>
+                              </span>
+                            </a>
+                          )}
+                          {fallbackActions.search_links?.second_degree && (
+                            <a href={fallbackActions.search_links.second_degree} target="_blank" rel="noopener noreferrer" className="group flex items-start gap-3 p-2 bg-white dark:bg-slate-950 border rounded text-sm hover:border-blue-300 transition-colors">
+                              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                <Users className="h-4 w-4" />
+                              </span>
+                              <span className="flex flex-col min-w-0">
+                                <span className="font-medium text-foreground flex items-center gap-1">
+                                  2nd Degree <ExternalLink className="h-3 w-3 text-muted-foreground group-hover:text-blue-600" />
+                                </span>
+                                <span className="text-xs text-muted-foreground">Search your 2nd-degree network at {companyName}</span>
+                              </span>
+                            </a>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="pt-2 border-t">
                       {!outreachDraft ? (

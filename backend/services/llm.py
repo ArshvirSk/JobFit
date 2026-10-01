@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
+class SourceRef(BaseModel):
+    """A URL Google Search grounded a response in."""
+
+    url: str
+    title: str = ""
+
 class LLMService:
     def __init__(self):
         # Initialize Google GenAI client with settings
@@ -101,6 +107,20 @@ class LLMService:
 
     async def generate_structured_with_search(self, system_msg: str, prompt: str, response_model: type[T]) -> T:
         """Generate structured JSON output using Gemini API with Google Search Grounding enabled."""
+        parsed, _ = await self.generate_structured_with_search_and_sources(system_msg, prompt, response_model)
+        return parsed
+
+    async def generate_structured_with_search_and_sources(
+        self, system_msg: str, prompt: str, response_model: type[T]
+    ) -> tuple[T, list[SourceRef]]:
+        """Same as generate_structured_with_search, but also returns the URLs the
+        answer was grounded in.
+
+        Google Search grounding is the only web access we have through the API —
+        the response's grounding metadata carries the pages the model actually
+        read. The research engine uses those as page-fetch candidates and as the
+        allowed citation set for per-field evidence.
+        """
         import json
 
         from pydantic import ValidationError
@@ -150,7 +170,8 @@ class LLMService:
 
                 try:
                     parsed_json = json.loads(text)
-                    return response_model.model_validate(parsed_json)
+                    parsed = response_model.model_validate(parsed_json)
+                    return parsed, self._extract_sources(response)
                 except (json.JSONDecodeError, ValidationError) as e:
                     logger.warning(
                         f"Failed to parse LLM JSON output (attempt {attempt + 1}/"
@@ -163,6 +184,33 @@ class LLMService:
                 logger.warning(f"LLM search call failed (attempt {attempt + 1}/{self.max_retries + 1}): {e}")
                 if attempt == self.max_retries:
                     raise
+
+    @staticmethod
+    def _extract_sources(response) -> list[SourceRef]:
+        """Pull grounding chunk URLs out of a Gemini response.
+
+        Tolerates both attribute- and dict-shaped SDK objects so a minor SDK
+        change degrades to "no sources" instead of crashing a research round.
+        """
+        def _get(obj, key, default=None):
+            if obj is None:
+                return default
+            if isinstance(obj, dict):
+                return obj.get(key, default)
+            return getattr(obj, key, default)
+
+        sources: list[SourceRef] = []
+        if not _get(response, "candidates"):
+            return sources
+        metadata = _get(_get(response, "candidates")[0], "grounding_metadata")
+        seen: set[str] = set()
+        for chunk in (_get(metadata, "grounding_chunks") or []):
+            web = _get(chunk, "web")
+            uri = _get(web, "uri")
+            if uri and uri not in seen:
+                seen.add(uri)
+                sources.append(SourceRef(url=uri, title=_get(web, "title") or ""))
+        return sources
 
     async def generate_text(self, system_msg: str, prompt: str) -> str:
         """Generate raw text output."""

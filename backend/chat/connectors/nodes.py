@@ -7,6 +7,7 @@ from backend.chat.connectors.schemas import (
     ExtendedLinksData, OrgInfoData, InterviewProcessData, LinkEntry
 )
 from backend.services.llm import llm_service
+from backend.services.research import research_company
 
 logger = logging.getLogger(__name__)
 
@@ -14,12 +15,23 @@ class FundingConnector(BaseConnector):
     category = "funding"
     ttl_hours = 24 * 7  # 1 week
     response_model = FundingData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> FundingData:
-        system_msg = "You are a helpful assistant that finds funding and investment data for companies. Be accurate and concise."
-        prompt = f"Find the latest funding round (stage and amount), total funding raised, valuation, and key investors for the company '{entity_name}'. Return the data in the requested JSON structure."
-        return await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        return await research_company(
+            entity_name,
+            FundingData,
+            category=self.category,
+            goal=(
+                "You are a helpful assistant that finds funding and investment data for companies. "
+                "Be accurate and concise."
+            ),
+            field_hint=(
+                "Find the latest funding round (stage and amount), total funding raised, valuation, "
+                "and key investors. Bootstrapped/private companies often have no disclosed funding — "
+                "that is a valid answer, but check funding databases and news before concluding it."
+            ),
+        )
 
 class LinkedInConnector(BaseConnector):
     category = "linkedin"
@@ -76,85 +88,121 @@ class CompensationConnector(BaseConnector):
     category = "compensation"
     ttl_hours = 24 * 14
     response_model = CompensationData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> CompensationData:
-        system_msg = "Find average and highest compensation package estimates for a company. Break it down by role if possible."
-        prompt = f"Search for software engineering (or related) compensation packages at '{entity_name}'. Find average base/total comp, highest reported, and a breakdown by level (e.g. SDE-1, SDE-2) if available."
-        return await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        return await research_company(
+            entity_name,
+            CompensationData,
+            category=self.category,
+            goal=(
+                "Find average and highest compensation package estimates for a company. "
+                "Break it down by role if possible."
+            ),
+            field_hint=(
+                "Find software/tech compensation at this company: average package, highest reported, "
+                "and ranges by level (e.g. SDE-1, SDE-2). Salary aggregators, job posts and employee "
+                "reports are the best sources."
+            ),
+        )
 
 class BenefitsConnector(BaseConnector):
     category = "benefits"
     ttl_hours = 24 * 30
     response_model = BenefitsData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> BenefitsData:
-        system_msg = "List the top employee benefits for a company."
-        prompt = f"What are the main employee benefits and perks offered by '{entity_name}'? Provide a list."
-        return await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        return await research_company(
+            entity_name,
+            BenefitsData,
+            category=self.category,
+            goal="List the top employee benefits for a company.",
+            field_hint=(
+                "Find the concrete employee benefits and perks this company offers (insurance, "
+                "hybrid/remote policy, training, leave). Careers pages and review sites are the "
+                "best sources."
+            ),
+        )
 
 class CompetitorsConnector(BaseConnector):
     category = "competitors"
     ttl_hours = 24 * 30
     response_model = CompetitorsData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> CompetitorsData:
-        system_msg = "Identify the top direct competitors for a company."
-        prompt = f"Who are the top 3-5 direct competitors of '{entity_name}' in their sector?"
-        return await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        return await research_company(
+            entity_name,
+            CompetitorsData,
+            category=self.category,
+            goal="Identify the top direct competitors for a company.",
+            field_hint=(
+                "Who are the top 3-5 direct competitors of this company in their sector and size "
+                "bracket? Industry directories, comparisons and market coverage are good sources."
+            ),
+        )
 
 class JobsConnector(BaseConnector):
     category = "open_jobs"
     ttl_hours = 24  # 1 day
     response_model = JobsData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> JobsData:
-        system_msg = "Find a few currently open job roles for a company."
-        prompt = f"Search for recent open job postings (especially software/tech roles) at '{entity_name}'. Provide the job title, location, and a URL if you find one. Just list up to 5."
-        return await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        return await research_company(
+            entity_name,
+            JobsData,
+            category=self.category,
+            goal="Find a few currently open job roles for a company.",
+            field_hint=(
+                "Find currently open tech roles: check the company careers page first, then job "
+                "boards and LinkedIn. Include title, location and URL where available."
+            ),
+        )
 
 class DSAQuestionsConnector(BaseConnector):
     category = "dsa"
     ttl_hours = 24 * 30  # 30 days
     response_model = CompanyDSAProfile
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> CompanyDSAProfile:
         import re
-        system_msg = (
-            "You are an expert at aggregating technical interview data. "
-            "Search for recent, real interview experiences (e.g. LeetCode Discuss, GeeksforGeeks, Glassdoor) "
-            "for software engineering roles at the company. "
-            "Extract the most frequently tested DSA topics (e.g. 'Dynamic Programming', 'Graphs'). "
-            "If specific problems are mentioned and you can definitively identify the corresponding LeetCode problem, "
-            "extract the title, difficulty, topic, and the EXACT LeetCode URL (must start with https://leetcode.com/problems/). "
-            "Do NOT reproduce or paraphrase the problem statement itself. Do NOT guess URLs if you are not sure. "
-            "If no verifiable problems are found, it is perfectly fine to return an empty reported_questions list."
+
+        res = await research_company(
+            entity_name,
+            CompanyDSAProfile,
+            category=self.category,
+            goal=(
+                "You are an expert at aggregating technical interview data. Extract only what real "
+                "interview reports support; empty results are perfectly acceptable."
+            ),
+            field_hint=(
+                "Find real interview experiences for software/tech roles (LeetCode Discuss, "
+                "Glassdoor, AmbitionBox, GeeksforGeeks): the DSA topics tested most often, and any "
+                "specific problem titles with their exact LeetCode URLs (https://leetcode.com/problems/...). "
+                "Never reproduce problem statements and never guess URLs."
+            ),
         )
-        prompt = f"Find commonly asked coding interview questions and topics for '{entity_name}'."
-        
-        res = await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
-        
-        # Verification
+
+        # Verification: only keep genuinely well-formed LeetCode links.
         verified_questions = []
         if res.reported_questions:
             url_pattern = re.compile(r"^https?://(www\.)?leetcode\.com/problems/[a-zA-Z0-9-]+/?$")
             for q in res.reported_questions:
                 if q.leetcode_url and url_pattern.match(q.leetcode_url):
                     verified_questions.append(q)
-        
+
         res.reported_questions = verified_questions
-        
+
         if len(res.reported_questions) > 0:
             res.confidence = "verified_links"
         elif res.topics_frequency and len(res.topics_frequency) > 0:
             res.confidence = "topic_only"
         else:
             res.confidence = "unavailable"
-            
+
         return res
 
 class ExtendedLinksConnector(BaseConnector):
@@ -199,12 +247,20 @@ class OrgInfoConnector(BaseConnector):
     category = "org_info"
     ttl_hours = 24 * 30
     response_model = OrgInfoData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> OrgInfoData:
-        system_msg = "Find high-level organizational facts for a company. Do not guess; if unknown, leave null."
-        prompt = f"Find the founding year, estimated headcount range, HQ location, major office locations, and industry tags for '{entity_name}'. Return ONLY a JSON object."
-        res = await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        res = await research_company(
+            entity_name,
+            OrgInfoData,
+            category=self.category,
+            goal="Find high-level organizational facts for a company. Do not guess; if unknown, leave null.",
+            field_hint=(
+                "Find founding year, estimated headcount range, HQ, major office locations and "
+                "industry tags. The company's own site (about/contact pages), LinkedIn public page, "
+                "directories and news are the best sources."
+            ),
+        )
         res.source = "Public Search"
         res.confidence = "high" if res.founded_year and res.hq_location else "medium"
         return res
@@ -213,12 +269,20 @@ class InterviewProcessConnector(BaseConnector):
     category = "interview_process"
     ttl_hours = 24 * 30
     response_model = InterviewProcessData
-    source = "google_search_llm"
+    source = "deep_research"
 
     async def _fetch_live(self, entity_name: str) -> InterviewProcessData:
-        system_msg = "Find the typical number of interview rounds and the official careers page URL for a company."
-        prompt = f"Search for common interview experiences for '{entity_name}'. Summarize the typical rounds (e.g. '4-5 rounds including 2 DSA'). Also provide the official careers page URL."
-        res = await llm_service.generate_structured_with_search(system_msg, prompt, self.response_model)
+        res = await research_company(
+            entity_name,
+            InterviewProcessData,
+            category=self.category,
+            goal="Find the typical number of interview rounds and the official careers page URL for a company.",
+            field_hint=(
+                "Find how many interview rounds candidates report and what they contain (DSA, system "
+                "design, HR), plus the official careers page URL. Interview-experience sites and "
+                "review platforms are the best sources."
+            ),
+        )
         res.source = "Public Interview Experiences"
         res.confidence = "high" if res.typical_rounds_summary and res.careers_page_url else "not reliably available"
         return res

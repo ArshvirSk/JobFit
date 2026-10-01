@@ -1,7 +1,35 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
-class FundingData(BaseModel):
+class Evidence(BaseModel):
+    """One cited fact backing a field in a researched company profile."""
+
+    field: str = Field(description="Name of the schema field this evidence supports")
+    value: str = Field(default="", description="Short rendering of the supported value")
+    url: str = Field(description="URL of the supporting page (must be a source we actually retrieved)")
+    quote: Optional[str] = Field(None, description="Short snippet from the source supporting the value")
+
+class ResearchMeta(BaseModel):
+    """Bookkeeping the deep-research engine attaches to researched schemas.
+
+    These fields describe HOW we know things, so they are excluded from
+    coverage math and never count as "missing data".
+    """
+
+    evidence: List[Evidence] = Field(
+        default_factory=list,
+        description="Cited sources for the filled fields; set by the research engine",
+    )
+    coverage: Optional[float] = Field(
+        None,
+        description="Fraction of content fields filled from evidence (0.0-1.0); set by the research engine",
+    )
+    research_rounds: Optional[int] = Field(
+        None,
+        description="Number of research rounds used to produce this data; set by the research engine",
+    )
+
+class FundingData(ResearchMeta):
     last_round_stage: Optional[str] = Field(None, description="e.g. Series A, Seed, Post-IPO")
     last_round_amount: Optional[str] = Field(None, description="e.g. $50M")
     total_raised: Optional[str] = Field(None, description="e.g. $120M")
@@ -26,7 +54,7 @@ class GlassdoorData(BaseModel):
         description="Explanation note"
     )
 
-class CompensationData(BaseModel):
+class CompensationData(ResearchMeta):
     average_package: Optional[str] = Field(None, description="e.g. ₹20 LPA or $150k")
     highest_package: Optional[str] = Field(None, description="e.g. ₹80 LPA")
     by_role: dict[str, str] = Field(
@@ -34,10 +62,10 @@ class CompensationData(BaseModel):
         description="Mapping of role name to typical compensation range (e.g. {'SDE-1': '₹18-25 LPA'})"
     )
 
-class BenefitsData(BaseModel):
+class BenefitsData(ResearchMeta):
     benefits: List[str] = Field(default_factory=list, description="List of key benefits e.g. 'Remote Work', 'Health Insurance'")
 
-class CompetitorsData(BaseModel):
+class CompetitorsData(ResearchMeta):
     top_competitors: List[str] = Field(default_factory=list, description="List of direct competitors in the sector")
 
 class OpenJob(BaseModel):
@@ -45,7 +73,7 @@ class OpenJob(BaseModel):
     location: str = Field(description="Location or 'Remote'")
     url: Optional[str] = Field(None, description="Link to the job posting if available")
 
-class JobsData(BaseModel):
+class JobsData(ResearchMeta):
     open_roles: List[OpenJob] = Field(default_factory=list, description="Recent open roles")
 
 class DSATopic(BaseModel):
@@ -59,7 +87,7 @@ class DSAQuestion(BaseModel):
     leetcode_url: str
     source_note: str
 
-class CompanyDSAProfile(BaseModel):
+class CompanyDSAProfile(ResearchMeta):
     topics_frequency: List[DSATopic]
     reported_questions: Optional[List[DSAQuestion]] = None
     confidence: str = Field(description="'verified_links', 'topic_only', or 'unavailable'")
@@ -77,7 +105,7 @@ class ExtendedLinksData(BaseModel):
     crunchbase: Optional[LinkEntry] = None
     ambitionbox: Optional[LinkEntry] = None
 
-class OrgInfoData(BaseModel):
+class OrgInfoData(ResearchMeta):
     founded_year: Optional[str] = Field(None, description="Year the company was founded")
     headcount_range: Optional[str] = Field(None, description="e.g. '1,000-5,000' or '10,000+'")
     hq_location: Optional[str] = Field(None, description="e.g. 'San Francisco, CA' or 'Bengaluru, India'")
@@ -86,7 +114,7 @@ class OrgInfoData(BaseModel):
     confidence: str = Field(description="'high', 'medium', or 'low'")
     source: str = Field(description="Where this info was sourced from")
 
-class InterviewProcessData(BaseModel):
+class InterviewProcessData(ResearchMeta):
     typical_rounds_summary: Optional[str] = Field(None, description="e.g. 'commonly reported: 4-5 rounds including 2 DSA rounds and 1 HR round'")
     careers_page_url: Optional[str] = Field(None, description="URL to the official careers page")
     confidence: str = Field(description="'high', 'medium', or 'not reliably available'")

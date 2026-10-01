@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Link from "next/link";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { ThinkingTrace, type TraceStep } from "./thinking-trace";
 
 interface MessageBubbleProps {
   role: "user" | "assistant";
@@ -15,13 +16,14 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   isError?: boolean;
   metadata?: any;
+  trace?: TraceStep[];
   onOpenProfile?: (slug: string) => void;
   onRetry?: () => void;
   onDraftFollowUp?: (payload: { company: string; role: string; application_id?: string; days_since?: number }) => void;
   onTailor?: (url: string, gaps?: string[]) => void;
 }
 
-export function MessageBubble({ role, content, isStreaming, isError, metadata, onOpenProfile, onRetry, onDraftFollowUp, onTailor }: MessageBubbleProps) {
+export function MessageBubble({ role, content, isStreaming, isError, metadata, trace, onOpenProfile, onRetry, onDraftFollowUp, onTailor }: MessageBubbleProps) {
   const isUser = role === "user";
 
   return (
@@ -56,7 +58,12 @@ export function MessageBubble({ role, content, isStreaming, isError, metadata, o
             isStreaming && !isUser && "min-h-[2rem]"
           )}
         >
-        <ReactMarkdown 
+          {!isUser && trace && trace.length > 0 && (
+            <div className="mb-3">
+              <ThinkingTrace steps={trace} active={isStreaming} />
+            </div>
+          )}
+          <ReactMarkdown 
           remarkPlugins={[remarkGfm]}
           components={{
             p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
@@ -80,7 +87,7 @@ export function MessageBubble({ role, content, isStreaming, isError, metadata, o
           <span className="inline-block w-1.5 h-4 bg-blue-500 ml-0.5 animate-pulse rounded-sm align-text-bottom" />
         )}
         
-        {isStreaming && !isUser && metadata?.progress && metadata.progress.length > 0 && (
+        {isStreaming && !isUser && metadata?.progress && metadata.progress.length > 0 && !(trace && trace.length > 0) && (
           <div className="mt-4 mb-2 p-5 bg-card border border-border shadow-sm rounded-xl space-y-4 max-w-sm relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-blue-500"></div>
             <div className="flex items-center gap-2 mb-2">

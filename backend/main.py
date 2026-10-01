@@ -53,6 +53,7 @@ app.add_middleware(
 )
 
 from backend.api.actions_routes import router as actions_router
+from backend.api.research_routes import research_router
 
 # Include routes
 app.include_router(router)
@@ -60,6 +61,7 @@ app.include_router(chat_router)
 app.include_router(company_router)
 app.include_router(onboarding_router)
 app.include_router(actions_router)
+app.include_router(research_router)  # dev-only research monitor + SSE stream
 
 if __name__ == "__main__":
     import uvicorn

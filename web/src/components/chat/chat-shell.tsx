@@ -10,8 +10,14 @@ import {
   fetchMessages,
   sendMessage,
   consumeStream,
+  API_BASE,
   type ChatMessage,
 } from "@/lib/chat-api";
+import {
+  traceStepFromActivity,
+  traceStepFromProgress,
+  type TraceStep,
+} from "./thinking-trace";
 import { useChat } from "./chat-context";
 import { useRouter } from "next/navigation";
 import { CompanyPanel } from "./company-panel";
@@ -43,6 +49,46 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
+
+  // ── Agent-style thinking trace ─────────
+  const assistantIdRef = useRef<string | null>(null);
+  const appendTrace = useCallback((step: TraceStep) => {
+    const id = assistantIdRef.current;
+    if (!id) return;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === id ? { ...m, trace: [...(m.trace ?? []), step] } : m
+      )
+    );
+  }, []);
+
+  // While streaming, mirror the backend research engine's activity into the trace
+  useEffect(() => {
+    if (!isStreaming) return;
+    const startedAt = Date.now() / 1000 - 1;
+    let es: EventSource;
+    try {
+      es = new EventSource(
+        `${API_BASE}/api/research/activity/stream?last_id=0`
+      );
+    } catch {
+      return;
+    }
+    es.onmessage = (e) => {
+      try {
+        const ev = JSON.parse(e.data);
+        if (typeof ev.ts === "number" && ev.ts < startedAt) return; // replayed history
+        const step = traceStepFromActivity(ev);
+        if (step) appendTrace(step);
+      } catch {
+        // ignore malformed frame
+      }
+    };
+    es.onerror = () => {
+      // stream closed/reconnecting — EventSource retries on its own
+    };
+    return () => es.close();
+  }, [isStreaming, appendTrace]);
 
   // Panel state
   const [activeCompanySlugs, setActiveCompanySlugs] = useState<string[]>([]);
@@ -249,6 +295,7 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
         ...prev,
         { id: assistantMsgId, role: "assistant", content: "", isStreaming: true },
       ]);
+      assistantIdRef.current = assistantMsgId;
 
       await consumeStream(stream, (event) => {
         if (event.error) {
@@ -260,6 +307,8 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
           );
           return;
         }
+
+        if (event.progress) appendTrace(traceStepFromProgress(event.progress));
 
         if (!event.done) {
           // Append token to the streaming assistant message
@@ -317,9 +366,10 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
         )
       );
     } finally {
+      assistantIdRef.current = null;
       setIsStreaming(false);
     }
-  }, [inputValue, isStreaming, currentThreadId, addThreadToList, updateThreadInList, threads]);
+  }, [inputValue, isStreaming, currentThreadId, addThreadToList, updateThreadInList, threads, appendTrace]);
 
   const handleDraftFollowUp = useCallback((payload: { company: string; role: string; application_id?: string; days_since?: number }) => {
     // Trigger a chat message asking the LLM to draft a follow-up email with context pre-filled
@@ -393,6 +443,7 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
               isStreaming: true,
             },
           ]);
+          assistantIdRef.current = assistantMsgId;
 
           await consumeStream(stream, (event) => {
             if (event.error) {
@@ -404,6 +455,7 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
               );
               return;
             }
+            if (event.progress) appendTrace(traceStepFromProgress(event.progress));
             if (!event.done) {
               setMessages((prev) =>
                 prev.map((m) => {
@@ -456,6 +508,7 @@ export function ChatShell({ threadId: initialThreadId }: { threadId?: string }) 
             )
           );
         } finally {
+          assistantIdRef.current = null;
           setIsStreaming(false);
         }
       }, 50);

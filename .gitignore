@@ -68,3 +68,6 @@ yarn-error.log*
 # Extension
 extension/dist/
 extension/build/
+
+# Freebuff agent session files
+.freebuff/
